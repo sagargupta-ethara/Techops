@@ -459,6 +459,97 @@ class TestBlockerAnalysis:
         assert got["blocker_analysis"]["result"]["headline"] == res["headline"]
 
 
+# ---------------- Iteration 4: phase_summary, AI cache, attention rule ----------------
+class TestPhaseSummary:
+    def test_aniket_soni_phase_summary(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/pods/Aniket%20Soni", headers=ah)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        ps = d.get("phase_summary")
+        assert ps and "trinity" in ps and "manual" in ps
+        t = ps["trinity"]
+        assert "runs_summary" in t and set(t["runs_summary"].keys()) == {"engram", "forge", "crucible"}
+        assert isinstance(t["rows"], list) and len(t["rows"]) == 3
+        keys = [row["key"] for row in t["rows"]]
+        assert keys == ["engram", "forge", "crucible"]
+        for row in t["rows"]:
+            assert set(row.keys()) >= {"area", "key", "total", "run_count", "buckets"}
+            assert set(row["buckets"].keys()) == {"block", "run", "ship", "hold", "stale", "idle"}
+        tr = t["total_row"]
+        assert tr["key"] == "total"
+        assert tr["total"] == sum(row["total"] for row in t["rows"])
+        # Engram total > 0 and includes some non-zero buckets (block/run/stale)
+        engram = t["rows"][0]
+        assert engram["total"] > 0, f"Engram total should be >0 for Aniket Soni: {engram}"
+        nonzero = sum(1 for v in engram["buckets"].values() if v > 0)
+        assert nonzero >= 1
+        # Manual pipeline shape
+        m = ps["manual"]
+        for k in ("people", "assigned", "bundles_created", "bundles_approved", "trajectory", "qced"):
+            assert k in m and isinstance(m[k], int)
+
+
+class TestBlockerCache:
+    def test_cached_analysis_returned_without_regeneration(self, s, ah):
+        pod = "Ram Lalit Chaudhary"
+        pre = s.get(f"{BASE_URL}/api/pods/{pod.replace(' ', '%20')}", headers=ah)
+        if pre.status_code == 404:
+            pytest.skip(f"POD {pod} not in snapshot")
+        d = pre.json()
+        ba = d.get("blocker_analysis")
+        if not ba:
+            pytest.skip(f"No cached analysis for {pod}; skip cache-check")
+        first_gen = ba["generated_at"]
+        # Fetch again — generated_at must remain identical (no auto regenerate on load)
+        d2 = s.get(f"{BASE_URL}/api/pods/{pod.replace(' ', '%20')}", headers=ah).json()
+        assert d2["blocker_analysis"] is not None
+        assert d2["blocker_analysis"]["generated_at"] == first_gen
+
+
+class TestAttentionRule:
+    def test_overview_attention_count(self, s, ah):
+        d = s.get(f"{BASE_URL}/api/overview", headers=ah).json()
+        att = d["metrics"]["attention"]
+        # New rule expects ~32; old was ~47. Allow a small range.
+        assert 20 <= att <= 40, f"attention={att} outside expected new-rule window (~32)"
+
+    def test_users_attention_filter_and_non_attention(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?attention=true&limit=1000", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["total"] > 0
+        for u in d["users"]:
+            assert u["is_attention"] is True
+            # Not on leave
+            assert u["completion_state"] != "absent"
+            tokens = [t.lower() for t in u.get("status_tokens", [])]
+            assert "leave" not in tokens
+            # No Trinity/Manual data at all
+            assert u.get("has_trinity") is False
+            assert u.get("has_manual") is False
+
+    def test_person_with_trinity_or_manual_not_attention(self, s, ah):
+        # Sample a non-attention user via completeness=complete or a Trinity worker
+        r = s.get(f"{BASE_URL}/api/users?status=Trinity&limit=50", headers=ah)
+        assert r.status_code == 200
+        found = False
+        for u in r.json()["users"]:
+            if u.get("has_trinity") or u.get("has_manual"):
+                assert u["is_attention"] is False
+                found = True
+                break
+        assert found, "no Trinity user found to verify non-attention"
+
+    def test_leave_person_not_attention(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?completeness=absent&limit=50", headers=ah)
+        assert r.status_code == 200
+        users = r.json()["users"]
+        assert len(users) > 0
+        for u in users:
+            assert u["is_attention"] is False
+            assert u["completion_state"] == "absent"
+
+
 class TestSummaryRegression:
     def test_summary_shape(self, s, ah):
         r = s.get(f"{BASE_URL}/api/summary", headers=ah)
