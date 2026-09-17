@@ -3,9 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import api from "@/lib/api";
-import { useFilters } from "@/lib/useFilters";
 import { PageContainer, PageHeader } from "@/components/Page";
-import GlobalFilterBar from "@/components/GlobalFilterBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -49,22 +47,17 @@ function cval(row, key) {
 }
 
 export default function Pods() {
-  const { filters } = useFilters();
   const navigate = useNavigate();
   const [tab, setTab] = useState("overall");
-  const qs = filters.date ? `?date=${filters.date}` : "";
   const { data, isLoading } = useQuery({
-    queryKey: ["summary", qs],
-    queryFn: () => api.get(`/summary${qs}`).then((r) => r.data),
+    queryKey: ["summary"],
+    queryFn: () => api.get(`/summary`).then((r) => r.data),
   });
 
-  let pods = data?.pods || [];
-  if (filters.tpm) pods = pods.filter((p) => p.tpm === filters.tpm);
-  if (filters.pod) pods = pods.filter((p) => p.name === filters.pod);
+  const pods = data?.pods || [];
 
   return (
     <>
-      <GlobalFilterBar />
       <PageContainer>
         <PageHeader title="Pod-wise Summary"
                     subtitle="Live roll-up of Trinity / Manual / Harness workstreams per POD. Click a row to drill into the POD overview." />

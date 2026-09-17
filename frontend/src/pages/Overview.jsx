@@ -2,26 +2,21 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Users, Target, Boxes, ShieldAlert, TrendingUp, ArrowRight, Layers } from "lucide-react";
 import api from "@/lib/api";
-import { useFilters } from "@/lib/useFilters";
 import { PageContainer, PageHeader } from "@/components/Page";
-import GlobalFilterBar from "@/components/GlobalFilterBar";
 import KpiStat from "@/components/KpiStat";
 import DistroChart from "@/components/DistroChart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { pctText } from "@/lib/format";
 
 export default function Overview() {
-  const { queryString } = useFilters();
-  const qs = queryString();
   const navigate = useNavigate();
   const { data, isLoading } = useQuery({
-    queryKey: ["overview", qs],
-    queryFn: () => api.get(`/overview?${qs}`).then((r) => r.data),
+    queryKey: ["overview"],
+    queryFn: () => api.get(`/overview`).then((r) => r.data),
   });
 
   return (
     <>
-      <GlobalFilterBar />
       <PageContainer>
         <PageHeader
           title="Executive Overview"

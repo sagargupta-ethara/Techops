@@ -5,8 +5,9 @@ export function PageContainer({ children }) {
 export function PageHeader({ title, subtitle, right }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="font-heading text-2xl font-extrabold tracking-tight sm:text-3xl">{title}</h1>
+      <div className="relative pl-3">
+        <span className="absolute left-0 top-1 h-[calc(100%-0.5rem)] w-1 rounded-full bg-primary" />
+        <h1 className="font-heading text-2xl font-extrabold tracking-tight sm:text-[28px]">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
       {right}

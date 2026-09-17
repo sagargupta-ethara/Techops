@@ -2,15 +2,22 @@ export default function KpiStat({ label, value, sub, accent = false, testid, ico
   return (
     <div
       data-testid={testid}
-      className="card-lift rounded-xl border border-border bg-card p-4 sm:p-5"
+      className="card-lift group relative overflow-hidden rounded-xl border border-border bg-card p-5"
     >
+      <span
+        className={`absolute inset-x-0 top-0 h-1 ${accent ? "bg-primary" : "bg-border"} transition-colors group-hover:bg-primary`}
+      />
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-mono font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-[11px] font-mono font-medium uppercase tracking-[0.12em] text-muted-foreground">
           {label}
         </span>
-        {Icon && <Icon className={`h-4 w-4 ${accent ? "text-primary" : "text-muted-foreground"}`} aria-hidden="true" />}
+        {Icon && (
+          <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground"}`}>
+            <Icon className="h-4 w-4" aria-hidden="true" />
+          </span>
+        )}
       </div>
-      <div className={`mt-2 font-mono text-2xl sm:text-3xl font-semibold tabular ${accent ? "text-primary" : "text-foreground"}`}>
+      <div className={`mt-3 font-mono text-3xl font-bold tabular tracking-tight ${accent ? "text-primary" : "text-foreground"}`}>
         {value}
       </div>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
