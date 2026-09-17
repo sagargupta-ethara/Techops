@@ -527,11 +527,15 @@ async def summary(user: dict = Depends(get_current_user), date: str = Query(None
     rows = []
     for name, members in groups.items():
         c = _ws_counts(members)
+        ps = compute_phase_summary(members)
         rows.append({
             "name": name,
             "internal_project": _mode(members, "internal_name"),
             "project_category": _mode(members, "project_name"),
             "tpm": members[0].get("tpm", ""),
+            "runs": ps["trinity"]["runs_summary"],
+            "status": ps["trinity"]["total_row"]["buckets"],
+            "funnel": ps["manual"],
             **c,
         })
     rows.sort(key=lambda r: -r["members"])
