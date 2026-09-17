@@ -803,16 +803,13 @@ def _disp_bucket(disp):
 
 
 def _classify(phase, disp):
-    """Combine phase (progress) and disposition (health) into one status.
-    Reaching publication (ship) wins; otherwise a BLOCK/STALE/HOLD disposition
-    wins; otherwise the phase implies Run/Idle."""
-    pb = _phase_bucket(phase)
-    if pb == "ship":
-        return "ship"
+    """Status = health disposition first (BLOCK/STALE/HOLD are separate from the
+    phase milestone), else the phase itself: publication -> Ship, in-progress
+    stages -> Run, Not started -> Idle."""
     db = _disp_bucket(disp)
     if db:
         return db
-    return pb
+    return _phase_bucket(phase)
 
 
 def _area_row(key, label, members, phase_f, disp_f, run_f):
