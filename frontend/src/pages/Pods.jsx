@@ -8,8 +8,8 @@ import GlobalFilterBar from "@/components/GlobalFilterBar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const KPI_DEFS = [
-  ["pods", "Pods"], ["members", "Members"], ["trinity", "Trinity"], ["manual", "Manual"],
-  ["harness", "Harness"], ["manual_qc", "Manual QC"], ["on_leave", "On Leave"],
+  ["pods", "PODs"], ["members", "Total Members"], ["trinity", "Trinity Taskers"], ["manual", "Manual Taskers"],
+  ["harness", "Harness / G. Kit"], ["manual_qc", "Manual QC Taskers"], ["on_leave", "On Leave"],
   ["trinity_shipped_pct", "Trinity Shipped"], ["manual_completed", "Manual Completed"],
   ["overall_pct", "Overall %"],
 ];
@@ -22,10 +22,11 @@ function kval(kpis, key) {
 
 const COLS = [
   ["internal_project", "Internal Project"], ["project_category", "Project Category"],
-  ["members", "Members"], ["trinity", "Trinity"], ["manual", "Manual"], ["harness", "Harness"],
-  ["manual_qc", "Manual QC"], ["on_leave", "On Leave"], ["trinity_target", "Trinity Target"],
-  ["trinity_completed", "Trinity Completed"], ["manual_target", "Manual Target"],
-  ["manual_completed", "Manual Completed"], ["overall_pct", "Overall Progress"],
+  ["members", "Members"], ["trinity", "Trinity Taskers"], ["manual", "Manual Taskers"],
+  ["harness", "Harness / G. Kit"], ["manual_qc", "Manual QC"], ["on_leave", "On Leave"],
+  ["trinity_target", "Trinity Target"], ["trinity_completed", "Trinity Completed"],
+  ["manual_target", "Manual Target"], ["manual_completed", "Manual Completed"],
+  ["overall_pct", "Overall Progress"],
 ];
 
 function cval(row, key) {

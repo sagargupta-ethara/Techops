@@ -114,7 +114,7 @@ export default function PodDetail() {
 
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5" data-testid="pod-counts">
                 {[["Trinity", data.counts.trinity], ["Manual", data.counts.manual],
-                  ["Harness/GK", data.counts.harness], ["Manual QC", data.counts.manual_qc],
+                  ["Harness / G. Kit", data.counts.harness], ["Manual QC", data.counts.manual_qc],
                   ["Absent", data.counts.on_leave]].map(([l, v]) => (
                   <div key={l} className="rounded-md border border-border bg-card px-3 py-2.5 text-center">
                     <div className="font-mono text-xl font-semibold tabular">{v}</div>

@@ -146,7 +146,7 @@ class TestTpms:
         total = sum(x["headcount"] for x in rows)
         assert total == 333
         for row in rows:
-            assert "pod_count" in row and "coverage" in row or "target_coverage" in row
+            assert "pod_count" in row and "trinity" in row and "manual" in row
 
     def test_detail(self, s, ah):
         rows = s.get(f"{BASE_URL}/api/tpms", headers=ah).json()["tpms"]
@@ -368,3 +368,103 @@ class TestFlagsAndAbsent:
             flags = u.get("progress", {}).get("flags", [])
             if not remark:
                 assert "no remark" in flags, f"Expected 'no remark' flag for {u.get('email')}"
+
+# ---------------- Iteration 3: TPM counts + blocker analysis ----------------
+class TestTpmCounts:
+    """/api/tpms should return integer workstream counts, not coverage bars."""
+
+    def test_tpms_list_has_counts(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/tpms", headers=ah)
+        assert r.status_code == 200
+        rows = r.json()["tpms"]
+        assert len(rows) == 4
+        required = {"headcount", "pod_count", "project_count",
+                    "trinity", "manual", "harness", "manual_qc", "absent", "attention"}
+        for row in rows:
+            assert required.issubset(row.keys()), f"missing keys: {required - set(row.keys())}"
+            for k in ("trinity", "manual", "harness", "manual_qc", "absent",
+                      "headcount", "pod_count", "project_count", "attention"):
+                assert isinstance(row[k], int), f"{row['name']}.{k} not int: {row[k]!r}"
+            # counts should sum to at most headcount (bucketed)
+            assert row["trinity"] + row["manual"] + row["harness"] + row["manual_qc"] + row["absent"] <= row["headcount"]
+        # Prafful Gupta example from review request
+        names = {r["name"]: r for r in rows}
+        if "Prafful Gupta" in names:
+            assert names["Prafful Gupta"]["headcount"] == 106
+
+    def test_tpm_detail_has_counts(self, s, ah):
+        rows = s.get(f"{BASE_URL}/api/tpms", headers=ah).json()["tpms"]
+        name = rows[0]["name"]
+        r = s.get(f"{BASE_URL}/api/tpms/{name}", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert "counts" in d
+        c = d["counts"]
+        for k in ("trinity", "manual", "harness", "manual_qc", "on_leave"):
+            assert k in c and isinstance(c[k], int)
+        assert isinstance(d.get("overview_insight"), str) and len(d["overview_insight"]) > 5
+        for pod in d["pods"]:
+            for k in ("headcount", "attention"):
+                assert k in pod
+            assert "insight" in pod
+
+
+class TestPodCounts:
+    def test_pod_detail_has_counts_and_null_blocker(self, s, ah):
+        pods = s.get(f"{BASE_URL}/api/pods", headers=ah).json()["pods"]
+        # pick a pod likely to not have cached analysis; but blocker_analysis key must be present
+        name = pods[-1]["name"]
+        r = s.get(f"{BASE_URL}/api/pods/{name}", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert "counts" in d
+        c = d["counts"]
+        for k in ("trinity", "manual", "harness", "manual_qc", "on_leave"):
+            assert k in c
+        assert "blocker_analysis" in d  # may be None
+
+
+class TestBlockerAnalysis:
+    def test_analyze_404_for_missing_pod(self, s, ah):
+        r = s.post(f"{BASE_URL}/api/pods/__no_such_pod__/analyze", headers=ah)
+        assert r.status_code == 404
+
+    def test_analyze_requires_auth(self, s):
+        r = s.post(f"{BASE_URL}/api/pods/Vidit%20Sharma/analyze")
+        assert r.status_code == 401
+
+    def test_analyze_vidit_sharma_and_cache(self, s, ah):
+        pod = "Vidit Sharma"
+        # Ensure pod exists
+        pre = s.get(f"{BASE_URL}/api/pods/{pod}", headers=ah)
+        if pre.status_code == 404:
+            pytest.skip(f"POD {pod} not present in current snapshot")
+        r = s.post(f"{BASE_URL}/api/pods/{pod.replace(' ', '%20')}/analyze",
+                   headers=ah, timeout=60)
+        assert r.status_code == 200, r.text
+        doc = r.json()
+        for k in ("pod", "reporting_date", "revision", "generated_at", "generated_by", "result"):
+            assert k in doc, f"missing key {k}"
+        assert doc["pod"] == pod
+        res = doc["result"]
+        assert isinstance(res.get("headline"), str) and len(res["headline"]) > 5
+        assert isinstance(res.get("blockers"), list) and len(res["blockers"]) >= 1
+        for b in res["blockers"]:
+            assert "issue" in b
+        assert res.get("model") == "claude-haiku-4-5"
+
+        # Cached in subsequent GET
+        got = s.get(f"{BASE_URL}/api/pods/{pod.replace(' ', '%20')}", headers=ah).json()
+        assert got.get("blocker_analysis") is not None
+        assert got["blocker_analysis"]["result"]["headline"] == res["headline"]
+
+
+class TestSummaryRegression:
+    def test_summary_shape(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/summary", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert "kpis" in d and "pods" in d
+        assert isinstance(d["pods"], list) and len(d["pods"]) >= 1
+        assert d["kpis"]["members"] == 333
+

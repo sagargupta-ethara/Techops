@@ -9,7 +9,7 @@ import { ChevronRight } from "lucide-react";
 
 const COUNT_COLS = [
   ["headcount", "Headcount"], ["pod_count", "PODs"], ["project_count", "Projects"],
-  ["trinity", "Trinity"], ["manual", "Manual"], ["harness", "Harness/GK"],
+  ["trinity", "Trinity Taskers"], ["manual", "Manual Taskers"], ["harness", "Harness / G. Kit"],
   ["manual_qc", "Manual QC"], ["absent", "Absent"], ["attention", "Attention"],
 ];
 
