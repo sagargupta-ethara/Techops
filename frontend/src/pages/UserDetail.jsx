@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Mail } from "lucide-react";
+import { ArrowLeft, Mail, AlertCircle } from "lucide-react";
 import api from "@/lib/api";
-import { PageContainer } from "@/components/Page";
+import { PageContainer, CompletionBadge } from "@/components/Page";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, cell } from "@/lib/format";
 
 const GROUPS = {
   information: [
@@ -38,7 +38,7 @@ function Field({ label, value }) {
   return (
     <div className="flex justify-between gap-4 border-b border-border/50 py-1.5 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium break-words">{value || "—"}</span>
+      <span className="text-right font-medium break-words">{cell(value)}</span>
     </div>
   );
 }
@@ -77,17 +77,30 @@ export default function UserDetail() {
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="font-heading text-2xl font-extrabold tracking-tight">{data.current.name}</h1>
+              <h1 className="font-heading text-2xl font-extrabold tracking-tight">{cell(data.current.name)}</h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-3.5 w-3.5" /> <span className="font-mono">{data.email}</span>
-                <span>·</span> {data.current.pod} · {data.current.role}
+                <span>·</span> {cell(data.current.pod)} · {cell(data.current.role)}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <CompletionBadge state={data.current.completion_state} />
+              {data.current.absent && <StatusBadge state="stale" text="Absent" />}
               {data.current.is_attention && <StatusBadge state="attention" text="Attention" size="lg" />}
-              <span className="text-xs text-muted-foreground">
-                {data.change_count} detected change{data.change_count === 1 ? "" : "s"}
-              </span>
+              {data.current.progress?.flags?.includes("no remark") && <StatusBadge state="stale" text="No remark" />}
+            </div>
+          </div>
+
+          <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-4" data-testid="user-insight">
+            <div className="flex items-start gap-2 text-sm">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <div className="font-medium">Working on: {data.current.workstream_label || "No workstream"}</div>
+                <div className="mt-0.5 text-muted-foreground">{data.current.progress?.insight || "No workstream data recorded."}</div>
+                {data.last_changed_at && (
+                  <div className="mt-1 text-xs text-muted-foreground">Last detected change {fmtDate(data.last_changed_at)} · {data.change_count} total</div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -105,8 +118,17 @@ export default function UserDetail() {
 
             <TabsContent value="current" className="space-y-4">
               <Section title="Information" fields={GROUPS.information} person={data.current} />
-              <Section title="Trinity" fields={GROUPS.trinity} person={data.current} />
-              <Section title="Manual" fields={GROUPS.manual} person={data.current} />
+              {data.current.progress?.show_trinity && (
+                <Section title="Trinity" fields={GROUPS.trinity} person={data.current} />
+              )}
+              {data.current.progress?.show_manual && (
+                <Section title="Manual" fields={GROUPS.manual} person={data.current} />
+              )}
+              {!data.current.progress?.show_trinity && !data.current.progress?.show_manual && (
+                <div className="rounded-md border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+                  No Trinity or Manual workstream data for this person.
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="history">

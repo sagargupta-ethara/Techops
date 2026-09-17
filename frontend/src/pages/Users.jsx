@@ -2,10 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useFilters } from "@/lib/useFilters";
-import { PageContainer, PageHeader, CoverageBar } from "@/components/Page";
+import { PageContainer, PageHeader, CompletionBadge } from "@/components/Page";
 import GlobalFilterBar from "@/components/GlobalFilterBar";
 import StatusBadge from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cell } from "@/lib/format";
 
 export default function Users() {
   const { queryString } = useFilters();
@@ -54,20 +55,20 @@ export default function Users() {
                       <div className="font-medium">{u.name}</div>
                       <div className="font-mono text-[11px] text-muted-foreground">{u.email}</div>
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{u.pod || "—"}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{u.role || "—"}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{u.project_name || "—"}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{u.pod || "No data"}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{u.role || "No data"}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{u.project_name || "No data"}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
-                        {u.status_tokens?.slice(0, 2).map((s) => (
+                        {u.status_tokens?.length ? u.status_tokens.slice(0, 2).map((s) => (
                           <span key={s} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">{s}</span>
-                        ))}
+                        )) : <span className="text-[11px] text-muted-foreground">No data</span>}
                         {u.status_tokens?.length > 2 && (
                           <span className="text-[11px] text-muted-foreground">+{u.status_tokens.length - 2}</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5"><CoverageBar value={u.completeness} /></td>
+                    <td className="px-4 py-2.5"><CompletionBadge state={u.completion_state} /></td>
                     <td className="px-4 py-2.5">{u.is_attention && <StatusBadge state="attention" text="Attention" />}</td>
                   </tr>
                 ))}

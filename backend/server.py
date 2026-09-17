@@ -121,6 +121,11 @@ def build_person_doc(rec: dict) -> dict:
     doc["has_trinity"] = D.has_any(rec, D.TRINITY_FIELDS)
     doc["has_manual"] = D.has_any(rec, D.MANUAL_FIELDS)
     doc["pod"] = rec.get("pod_lead", "")
+    prog = D.derive_progress(rec)
+    doc["progress"] = prog
+    doc["completion_state"] = prog["completion_state"]
+    doc["absent"] = prog["absent"]
+    doc["workstream_label"] = prog["label"]
     return doc
 
 
@@ -308,12 +313,8 @@ def filter_people(people: list[dict], q: dict) -> list[dict]:
             continue
         band = q.get("completeness")
         if band:
-            c = p.get("completeness", 0)
-            if band == "complete" and c < 100:
-                continue
-            if band == "partial" and (c <= 0 or c >= 100):
-                continue
-            if band == "empty" and c != 0:
+            state = p.get("completion_state", "incomplete")
+            if band != state:
                 continue
         s = q.get("search")
         if s:
@@ -352,19 +353,23 @@ def compute_metrics(people: list[dict]) -> dict:
     trinity = sum(1 for p in people if p.get("has_trinity"))
     manual = sum(1 for p in people if p.get("has_manual"))
     attention = sum(1 for p in people if p.get("is_attention"))
-    complete = sum(1 for p in people if p.get("completeness", 0) >= 100)
-    partial = sum(1 for p in people if 0 < p.get("completeness", 0) < 100)
-    empty = sum(1 for p in people if p.get("completeness", 0) == 0)
+    complete = sum(1 for p in people if p.get("completion_state") == "complete")
+    incomplete = sum(1 for p in people if p.get("completion_state") == "incomplete")
+    absent = sum(1 for p in people if p.get("completion_state") == "absent")
+    no_remark = sum(1 for p in people if "no remark" in (p.get("progress", {}).get("flags") or []))
     return {
         "headcount": n,
         "target_coverage": {"num": target, "den": n, "pct": D.pct(target, n)},
         "trinity_coverage": {"num": trinity, "den": n, "pct": D.pct(trinity, n)},
         "manual_coverage": {"num": manual, "den": n, "pct": D.pct(manual, n)},
         "attention": attention,
-        "completeness": {"complete": complete, "partial": partial, "empty": empty},
+        "no_remark": no_remark,
+        "completion": {"complete": complete, "incomplete": incomplete, "absent": absent,
+                       "pct": D.pct(complete, n - absent) if (n - absent) else None},
         "role_mix": count_by(people, "role"),
         "employment_mix": count_by(people, "employment"),
         "project_mix": count_by(people, "project_name"),
+        "workstream_mix": count_by(people, "workstream_label"),
         "status_distribution": status_distribution(people),
     }
 
@@ -376,6 +381,10 @@ def strip_person(p: dict, full: bool = False) -> dict:
         "status_tokens": p.get("status_tokens", []),
         "is_attention": p.get("is_attention", False),
         "completeness": p.get("completeness", 0),
+        "completion_state": p.get("completion_state", "incomplete"),
+        "absent": p.get("absent", False),
+        "workstream_label": p.get("workstream_label", ""),
+        "progress": p.get("progress", {}),
         "has_trinity": p.get("has_trinity", False),
         "has_manual": p.get("has_manual", False),
     })
@@ -535,10 +544,17 @@ async def tpm_detail(name: str, user: dict = Depends(get_current_user), date: st
         pod_rows.append({"name": pn, "headcount": m["headcount"], "attention": m["attention"],
                          "target_coverage": m["target_coverage"]["pct"],
                          "trinity_coverage": m["trinity_coverage"]["pct"],
-                         "manual_coverage": m["manual_coverage"]["pct"]})
+                         "manual_coverage": m["manual_coverage"]["pct"],
+                         "insight": _pod_overview_insight(pn, pm, m)})
     pod_rows.sort(key=lambda x: -x["headcount"])
+    tm = compute_metrics(members)
+    overall = (
+        f"{name} leads {len(pod_rows)} PODs and {tm['headcount']} people — "
+        f"{tm['completion']['complete']} complete, {tm['completion']['incomplete']} in progress, "
+        f"{tm['completion']['absent']} on leave; {tm['attention']} flagged for attention."
+    )
     return {"name": name, "reporting_date": snap["reporting_date"],
-            "metrics": compute_metrics(members), "pods": pod_rows}
+            "metrics": tm, "overview_insight": overall, "pods": pod_rows}
 
 
 @api.get("/pods")
@@ -577,13 +593,54 @@ async def pod_detail(name: str, user: dict = Depends(get_current_user), date: st
         {"_id": 0}
     ).to_list(2000)
 
+    # Last-updated per member (max detected time across all recorded change events for this POD).
+    last_map = {}
+    async for e in db.change_events.find({"pod": name}, {"_id": 0, "email": 1, "detected_at": 1}):
+        cur = last_map.get(e["email"])
+        if not cur or e["detected_at"] > cur:
+            last_map[e["email"]] = e["detected_at"]
+
+    m = compute_metrics(members)
+    member_insights = [
+        {
+            "email": p["email"], "name": p.get("name", ""), "role": p.get("role", ""),
+            "status": p.get("tasking_status", "") or "No data",
+            "workstream": p.get("workstream_label", ""),
+            "completion_state": p.get("completion_state", "incomplete"),
+            "insight": p.get("progress", {}).get("insight", ""),
+            "flags": p.get("progress", {}).get("flags", []),
+            "is_attention": p.get("is_attention", False),
+            "last_updated": last_map.get(p["email"]),
+        }
+        for p in sorted(members, key=lambda x: x.get("name", ""))
+    ]
+    overview_insight = _pod_overview_insight(name, members, m)
+
     return {
         "name": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"],
         "tpm": members[0].get("tpm", ""),
-        "metrics": compute_metrics(members),
+        "metrics": m,
+        "overview_insight": overview_insight,
+        "member_insights": member_insights,
         "people": [strip_person(p) for p in filtered],
         "changes": events,
     }
+
+
+def _pod_overview_insight(name, members, m):
+    n = len(members)
+    ws_counts = {}
+    for p in members:
+        for w in p.get("progress", {}).get("workstreams", []):
+            ws_counts[w] = ws_counts.get(w, 0) + 1
+    top = sorted(ws_counts.items(), key=lambda x: -x[1])
+    ws_txt = ", ".join(f"{D.WS_LABELS.get(w, w)} {c}" for w, c in top[:4])
+    comp = m["completion"]
+    return (
+        f"POD {name}: {n} people — {ws_txt or 'no workstream data'}. "
+        f"{comp['complete']} complete, {comp['incomplete']} in progress, {comp['absent']} on leave. "
+        f"{m['attention']} flagged for attention" + (f", {m['no_remark']} with no remark." if m['no_remark'] else ".")
+    )
 
 
 @api.get("/users")

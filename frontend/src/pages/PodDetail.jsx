@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ShieldAlert, Clock, AlertCircle } from "lucide-react";
 import api from "@/lib/api";
-import { PageContainer, CoverageBar } from "@/components/Page";
+import { PageContainer, CompletionBadge } from "@/components/Page";
 import KpiStat from "@/components/KpiStat";
 import DistroChart from "@/components/DistroChart";
 import StatusBadge from "@/components/StatusBadge";
@@ -11,17 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { pctText } from "@/lib/format";
+import { pctText, cell, fmtDate } from "@/lib/format";
 
 const TRINITY_COLS = [
-  ["engram_phase", "ENGRAM"], ["directive_disposition", "DIRECTIVE"],
-  ["forge_phase", "FORGE"], ["edict_disposition", "EDICT"],
-  ["crucible_phase", "CRUCIBLE"], ["verdict_disposition", "VERDICT"],
-  ["completion_status", "Completion"],
+  ["tracking_md", "Tracking.MD"], ["engram_run_count", "ENGRAM Runs"], ["engram_phase", "ENGRAM phase"],
+  ["directive_disposition", "DIRECTIVE.md"], ["forge_phase", "FORGE phase"], ["forge_run_count", "FORGE Runs"],
+  ["edict_disposition", "EDICT.md"], ["crucible_run_count", "CRUCIBLE Runs"], ["crucible_phase", "CRUCIBLE phase"],
+  ["verdict_disposition", "VERDICT.md"], ["completion_status", "Completion"], ["tasks_completed", "Tasks Done"],
+  ["crucible_verdict", "Crucible Verdict"], ["remarks", "Remarks"],
 ];
 const MANUAL_COLS = [
   ["input_bundles_created", "Bundles Created"], ["input_bundles_approved", "Bundles Approved"],
-  ["trajectory_generated", "Trajectory"], ["tasks_qced", "QCed"],
+  ["trajectory_generated", "Trajectory"], ["tasks_qced", "Tasks QCed"], ["remark", "Remark"],
 ];
 
 const CLS_MAP = {
@@ -78,15 +79,56 @@ export default function PodDetail() {
             </TabsList>
 
             <TabsContent value="overview">
+              <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-4" data-testid="pod-overview-insight">
+                <div className="flex items-start gap-2 text-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <span>{data.overview_insight}</span>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <KpiStat testid="pod-kpi-headcount" label="Headcount" value={data.metrics.headcount} accent />
-                <KpiStat testid="pod-kpi-target" label="Target Coverage" value={pctText(data.metrics.target_coverage.pct)} />
+                <KpiStat testid="pod-kpi-complete" label="Complete"
+                         value={data.metrics.completion.complete}
+                         sub={`${data.metrics.completion.incomplete} in progress · ${data.metrics.completion.absent} absent`} />
                 <KpiStat testid="pod-kpi-trinity" label="Trinity Coverage" value={pctText(data.metrics.trinity_coverage.pct)} />
-                <KpiStat testid="pod-kpi-manual" label="Manual Coverage" value={pctText(data.metrics.manual_coverage.pct)} />
+                <KpiStat testid="pod-kpi-attention" label="Attention" value={data.metrics.attention}
+                         sub={data.metrics.no_remark ? `${data.metrics.no_remark} no remark` : ""} />
               </div>
+
               <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <DistroChart testid="pod-chart-status" title="Tasking Status" data={data.metrics.status_distribution} type="bar" />
+                <DistroChart testid="pod-chart-workstream" title="What People Are Working On" data={data.metrics.workstream_mix} type="bar" />
                 <DistroChart testid="pod-chart-role" title="Role Mix" data={data.metrics.role_mix} type="pie" />
+              </div>
+
+              <div className="mt-4 rounded-md border border-border bg-card">
+                <div className="border-b border-border px-4 py-2.5 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Member Summary — what each person is doing
+                </div>
+                <ul className="divide-y divide-border/60" data-testid="pod-member-insights">
+                  {data.member_insights.map((mi) => (
+                    <li key={mi.email} data-testid={`member-insight-${mi.email}`}
+                        onClick={() => navigate(`/users/${encodeURIComponent(mi.email)}`)}
+                        className="flex cursor-pointer flex-col gap-1 px-4 py-3 hover:bg-accent sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{mi.name}</span>
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">{mi.role || "No role"}</span>
+                          <span className="text-xs text-muted-foreground">{mi.status}</span>
+                          {mi.is_attention && <StatusBadge state="attention" text="Attention" />}
+                          {mi.flags?.includes("no remark") && <StatusBadge state="stale" text="No remark" />}
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">{mi.insight}</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <CompletionBadge state={mi.completion_state} />
+                        <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {mi.last_updated ? fmtDate(mi.last_updated) : "no change yet"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </TabsContent>
 
@@ -94,7 +136,7 @@ export default function PodDetail() {
               <PeopleFilter search={search} setSearch={setSearch} count={people.length} />
               <PeopleTable people={people} navigate={navigate}
                 cols={[["role", "Role"], ["project_name", "Project"], ["tasking_status", "Status"]]}
-                completeness testid="pod-people-table" />
+                showInsight completeness testid="pod-people-table" />
             </TabsContent>
 
             <TabsContent value="work-status">
@@ -102,16 +144,22 @@ export default function PodDetail() {
               <div className="mt-4">
                 <PeopleTable people={data.people} navigate={navigate}
                   cols={[["role", "Role"], ["tasking_status", "Tasking Status"], ["assigned_target", "Target"]]}
-                  testid="pod-ws-table" />
+                  showInsight completeness testid="pod-ws-table" />
               </div>
             </TabsContent>
 
             <TabsContent value="trinity">
-              <PeopleTable people={data.people} navigate={navigate} cols={TRINITY_COLS} testid="pod-trinity-table" />
+              <p className="mb-3 text-sm text-muted-foreground">
+                Trinity workstream columns (Tracking.MD → Remarks). Empty cells show “No data”.
+              </p>
+              <PeopleTable people={data.people} navigate={navigate} cols={TRINITY_COLS} completeness testid="pod-trinity-table" />
             </TabsContent>
 
             <TabsContent value="manual">
-              <PeopleTable people={data.people} navigate={navigate} cols={MANUAL_COLS} testid="pod-manual-table" />
+              <p className="mb-3 text-sm text-muted-foreground">
+                Manual workstream columns (Input Bundles Created → Remark). Empty cells show “No data”.
+              </p>
+              <PeopleTable people={data.people} navigate={navigate} cols={MANUAL_COLS} completeness testid="pod-manual-table" />
             </TabsContent>
 
             <TabsContent value="changes">
@@ -163,7 +211,7 @@ function PeopleFilter({ search, setSearch, count }) {
   );
 }
 
-function PeopleTable({ people, cols, navigate, completeness, testid }) {
+function PeopleTable({ people, cols, navigate, completeness, showInsight, testid }) {
   return (
     <div className="overflow-x-auto rounded-md border border-border bg-card thin-scroll">
       <table className="w-full min-w-[640px] text-sm" data-testid={testid}>
@@ -171,6 +219,7 @@ function PeopleTable({ people, cols, navigate, completeness, testid }) {
           <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-4 py-2 font-medium">Name</th>
             {cols.map(([k, label]) => <th key={k} className="px-4 py-2 font-medium">{label}</th>)}
+            {showInsight && <th className="px-4 py-2 font-medium">Working On</th>}
             {completeness && <th className="px-4 py-2 font-medium">Complete</th>}
             <th className="px-4 py-2 font-medium">Flag</th>
           </tr>
@@ -184,10 +233,18 @@ function PeopleTable({ people, cols, navigate, completeness, testid }) {
                 <div className="font-medium">{p.name}</div>
                 <div className="font-mono text-[11px] text-muted-foreground">{p.email}</div>
               </td>
-              {cols.map(([k]) => <td key={k} className="px-4 py-2 text-muted-foreground">{p[k] || "—"}</td>)}
-              {completeness && <td className="px-4 py-2"><CoverageBar value={p.completeness} /></td>}
+              {cols.map(([k]) => <td key={k} className="px-4 py-2 text-muted-foreground">{cell(p[k])}</td>)}
+              {showInsight && (
+                <td className="px-4 py-2 text-xs text-muted-foreground max-w-[320px]">
+                  {p.progress?.insight || "No data"}
+                </td>
+              )}
+              {completeness && <td className="px-4 py-2"><CompletionBadge state={p.completion_state} /></td>}
               <td className="px-4 py-2">
-                {p.is_attention && <StatusBadge state="attention" text="Attention" />}
+                <div className="flex flex-wrap gap-1">
+                  {p.is_attention && <StatusBadge state="attention" text="Attention" />}
+                  {p.progress?.flags?.includes("no remark") && <StatusBadge state="stale" text="No remark" />}
+                </div>
               </td>
             </tr>
           ))}

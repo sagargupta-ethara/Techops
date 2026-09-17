@@ -1,3 +1,9 @@
+export function cell(v) {
+  if (v == null) return "No data";
+  const s = String(v).trim();
+  return s === "" ? "No data" : s;
+}
+
 export function pctText(p) {
   if (p == null) return "Not available";
   return `${p}%`;

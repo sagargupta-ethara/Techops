@@ -12,13 +12,13 @@ import { Badge } from "@/components/ui/badge";
 function FSelect({ label, k, value, options, onChange, testid }) {
   return (
     <Select value={value || "all"} onValueChange={(v) => onChange(k, v)}>
-      <SelectTrigger data-testid={testid} className="h-9 w-full min-w-[130px] text-sm">
+      <SelectTrigger data-testid={testid} className="h-9 w-[140px] shrink-0 text-sm">
         <SelectValue placeholder={label} />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All {label}</SelectItem>
         {options.map((o) => (
-          <SelectItem key={o} value={o}>{o}</SelectItem>
+          <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -33,11 +33,11 @@ export default function GlobalFilterBar() {
   return (
     <div className="border-b border-border bg-card/60 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted-foreground">
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto thin-scroll pb-1">
+          <div className="flex shrink-0 items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted-foreground">
             <Filter className="h-3.5 w-3.5" /> Filters
           </div>
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <div className="relative w-[200px] shrink-0">
             <Input
               data-testid="filter-search"
               placeholder="Search name or email…"
@@ -59,14 +59,14 @@ export default function GlobalFilterBar() {
           <FSelect label="Status" k="status" value={filters.status} options={opt.statuses || []}
                    onChange={setFilter} testid="filter-status" />
           <FSelect label="Completeness" k="completeness" value={filters.completeness}
-                   options={["complete", "partial", "empty"]} onChange={setFilter}
+                   options={["complete", "incomplete", "absent"]} onChange={setFilter}
                    testid="filter-completeness" />
           <Button
             variant={filters.attention === "true" ? "default" : "outline"}
             size="sm"
             data-testid="filter-attention"
             onClick={() => setFilter("attention", filters.attention === "true" ? "" : "true")}
-            className="h-9 text-xs"
+            className="h-9 shrink-0 text-xs"
           >
             Attention only
           </Button>

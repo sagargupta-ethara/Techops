@@ -42,7 +42,14 @@ export default function Overview() {
               <KpiStat testid="kpi-trinity" label="Trinity Coverage" value={pctText(data.metrics.trinity_coverage.pct)} icon={Layers}
                        sub={`${data.metrics.trinity_coverage.num}/${data.metrics.trinity_coverage.den} people`} />
               <KpiStat testid="kpi-attention" label="Attention" value={data.metrics.attention} icon={ShieldAlert}
-                       sub="Rework / blocked workflow" />
+                       sub={data.metrics.no_remark ? `${data.metrics.no_remark} with no remark` : "Rework / blocked workflow"} />
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <MiniStat label="Complete" value={data.metrics.completion.complete} tone="text-emerald-500" testid="mini-complete" />
+              <MiniStat label="In Progress (NA)" value={data.metrics.completion.incomplete} tone="text-amber-500" testid="mini-incomplete" />
+              <MiniStat label="Absent (Leave)" value={data.metrics.completion.absent} tone="text-slate-400" testid="mini-absent" />
+              <MiniStat label="No Remark" value={data.metrics.no_remark} tone="text-cyan-500" testid="mini-noremark" />
             </div>
 
             {data.insights?.length > 0 && (
@@ -69,17 +76,22 @@ export default function Overview() {
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <DistroChart testid="chart-status" title="Tasking Status Distribution"
-                             data={data.metrics.status_distribution} type="bar" />
+                <DistroChart testid="chart-workstream" title="What People Are Working On (Workstream)"
+                             data={data.metrics.workstream_mix} type="bar" />
               </div>
               <DistroChart testid="chart-role" title="Role Mix" data={data.metrics.role_mix} type="pie" />
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <DistroChart testid="chart-employment" title="Employment" data={data.metrics.employment_mix} type="pie" />
               <div className="lg:col-span-2">
-                <DistroChart testid="chart-project" title="Project Mix" data={data.metrics.project_mix} type="bar" />
+                <DistroChart testid="chart-status" title="Tasking Status Distribution"
+                             data={data.metrics.status_distribution} type="bar" />
               </div>
+              <DistroChart testid="chart-employment" title="Employment" data={data.metrics.employment_mix} type="pie" />
+            </div>
+
+            <div className="mt-4">
+              <DistroChart testid="chart-project" title="Project Mix" data={data.metrics.project_mix} type="bar" />
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -93,8 +105,16 @@ export default function Overview() {
   );
 }
 
-function HierPanel({ title, items, onClick, icon: Icon, testid }) {
-  const max = Math.max(...items.map((i) => i.headcount), 1);
+function MiniStat({ label, value, tone, testid }) {
+  return (
+    <div data-testid={testid} className="rounded-md border border-border bg-card px-3 py-2.5">
+      <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 font-mono text-xl font-semibold tabular ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
+function HierPanel({ title, items, onClick, icon: Icon, testid }) {  const max = Math.max(...items.map((i) => i.headcount), 1);
   return (
     <div className="rounded-md border border-border bg-card p-4" data-testid={testid}>
       <h3 className="mb-3 flex items-center gap-2 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">

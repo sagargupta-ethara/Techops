@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight, Info } from "lucide-react";
 import api from "@/lib/api";
 import { PageContainer, PageHeader, CoverageBar } from "@/components/Page";
 import KpiStat from "@/components/KpiStat";
@@ -30,14 +30,21 @@ export default function TpmDetail() {
       ) : (
         <>
           <PageHeader title={name} subtitle={`Reporting date ${data.reporting_date}`} />
+          <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-4" data-testid="tpm-overview-insight">
+            <div className="flex items-start gap-2 text-sm">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>{data.overview_insight}</span>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <KpiStat testid="tpm-kpi-headcount" label="Headcount" value={data.metrics.headcount} accent />
-            <KpiStat testid="tpm-kpi-target" label="Target Coverage" value={pctText(data.metrics.target_coverage.pct)} />
+            <KpiStat testid="tpm-kpi-complete" label="Complete" value={data.metrics.completion.complete}
+                     sub={`${data.metrics.completion.incomplete} in progress · ${data.metrics.completion.absent} absent`} />
             <KpiStat testid="tpm-kpi-trinity" label="Trinity Coverage" value={pctText(data.metrics.trinity_coverage.pct)} />
             <KpiStat testid="tpm-kpi-attention" label="Attention" value={data.metrics.attention} />
           </div>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <DistroChart testid="tpm-chart-status" title="Tasking Status" data={data.metrics.status_distribution} type="bar" />
+            <DistroChart testid="tpm-chart-workstream" title="What People Are Working On" data={data.metrics.workstream_mix} type="bar" />
             <DistroChart testid="tpm-chart-role" title="Role Mix" data={data.metrics.role_mix} type="pie" />
           </div>
           <div className="mt-4 overflow-hidden rounded-md border border-border bg-card">
@@ -61,7 +68,10 @@ export default function TpmDetail() {
                   <tr key={p.name} data-testid={`tpm-pod-row-${p.name}`}
                       onClick={() => navigate(`/pods/${encodeURIComponent(p.name)}`)}
                       className="cursor-pointer border-b border-border/60 hover:bg-accent">
-                    <td className="px-4 py-2 font-medium">{p.name}</td>
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{p.name}</div>
+                      <div className="max-w-[360px] truncate text-[11px] text-muted-foreground">{p.insight}</div>
+                    </td>
                     <td className="px-4 py-2 text-right font-mono tabular">{p.headcount}</td>
                     <td className="px-4 py-2 text-right font-mono tabular">{p.attention}</td>
                     <td className="px-4 py-2"><CoverageBar value={p.target_coverage} /></td>

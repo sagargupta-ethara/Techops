@@ -28,3 +28,19 @@ export function CoverageBar({ value, testid }) {
     </div>
   );
 }
+
+const COMPLETION_MAP = {
+  complete: { label: "100% Complete", cls: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
+  incomplete: { label: "NA", cls: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30" },
+  absent: { label: "Absent", cls: "text-slate-500 bg-slate-500/10 border-slate-500/30" },
+};
+
+export function CompletionBadge({ state, testid }) {
+  const cfg = COMPLETION_MAP[state] || COMPLETION_MAP.incomplete;
+  return (
+    <span data-testid={testid}
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}

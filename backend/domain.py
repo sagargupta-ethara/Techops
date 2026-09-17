@@ -170,5 +170,135 @@ def pct(numerator: int, denominator: int):
     return round(1000 * numerator / denominator) / 10
 
 
+def to_int(v):
+    v = (v or "").strip().replace(",", "")
+    if not v:
+        return None
+    try:
+        return int(float(v))
+    except ValueError:
+        return None
+
+
+WS_LABELS = {
+    "trinity": "Trinity", "manual_dataset": "Manual Dataset", "trajectory": "Trajectory Generation",
+    "manual_qc": "Manual QC", "qc_pipeline": "QC Pipeline", "harness": "Harness",
+    "generation_kit": "Generation Kit", "project_lead": "Project Lead", "rework": "Rework",
+    "leave": "On Leave",
+}
+MEASURED_WS = {"manual_dataset", "trajectory", "manual_qc"}
+INPROGRESS_WS = {"harness", "generation_kit", "qc_pipeline"}
+
+
+def derive_progress(rec: dict) -> dict:
+    """Status-driven workstream + completion for one person.
+
+    completion is 100 (complete) or None (NA). Pure Leave => absent.
+    """
+    raw = (rec.get("tasking_status") or "").lower()
+    ws = []
+    if "trinity" in raw:
+        ws.append("trinity")
+    if "dataset" in raw:
+        ws.append("manual_dataset")
+    if "trajectory" in raw:
+        ws.append("trajectory")
+    if "manual qc" in raw:
+        ws.append("manual_qc")
+    if "qc pipeline" in raw:
+        ws.append("qc_pipeline")
+    if "harness" in raw:
+        ws.append("harness")
+    if "generation kit" in raw:
+        ws.append("generation_kit")
+    if "project lead" in raw:
+        ws.append("project_lead")
+    if "rework" in raw:
+        ws.append("rework")
+    leave = "leave" in raw
+
+    assigned = to_int(rec.get("assigned_target"))
+    qced = to_int(rec.get("tasks_qced"))
+    remark_t = (rec.get("remarks") or "").strip()
+    remark_m = (rec.get("remark") or "").strip()
+    remark_text = remark_t or remark_m
+    any_remark = bool(remark_text)
+    flags = []
+
+    if leave and not ws:
+        return {
+            "workstreams": ["leave"], "label": "On Leave", "absent": True, "completion": None,
+            "completion_state": "absent", "assigned": assigned, "completed": qced,
+            "show_trinity": False, "show_manual": False, "flags": [],
+            "insight": "On leave — marked absent (no data expected).",
+        }
+
+    show_trinity = ("trinity" in ws) or has_any(rec, TRINITY_FIELDS)
+    show_manual = any(w in ws for w in ("manual_dataset", "trajectory", "manual_qc")) or has_any(rec, MANUAL_FIELDS)
+
+    def trinity_complete():
+        cs = (rec.get("completion_status") or "").lower()
+        vd = (rec.get("verdict_disposition") or "").lower()
+        cv = (rec.get("crucible_verdict") or "").lower()
+        return (any(k in cs for k in ("complete", "done", "100"))
+                or "approved" in vd or "approved" in cv or "sign-off" in vd or "signoff" in vd)
+
+    def manual_complete():
+        return assigned is not None and assigned > 0 and qced is not None and qced >= assigned
+
+    measured = [w for w in ws if w in MEASURED_WS]
+    inprogress = [w for w in ws if w in INPROGRESS_WS]
+
+    considered = False
+    complete = True
+    if "trinity" in ws:
+        considered = True
+        if not trinity_complete():
+            complete = False
+    if measured:
+        considered = True
+        if not manual_complete():
+            complete = False
+    if inprogress:
+        complete = False
+    completion = 100 if (considered and complete) else None
+
+    if ("harness" in ws or "generation_kit" in ws) and not any_remark:
+        flags.append("no remark")
+    if "rework" in ws:
+        flags.append("rework")
+
+    label = " + ".join(WS_LABELS[w] for w in ws) if ws else "Other"
+
+    parts = []
+    if "trinity" in ws:
+        eng = rec.get("engram_phase") or "No data"
+        fo = rec.get("forge_phase") or "No data"
+        cr = rec.get("crucible_phase") or "No data"
+        parts.append(f"Trinity — ENGRAM {eng}, FORGE {fo}, CRUCIBLE {cr}"
+                     + (" (complete)" if trinity_complete() else ""))
+    if measured:
+        a = assigned if assigned is not None else "No data"
+        c = qced if qced is not None else "No data"
+        mlabel = "/".join(WS_LABELS[w] for w in measured)
+        parts.append(f"{mlabel} — {c}/{a} approved" + (" (complete)" if manual_complete() else " (in progress)"))
+    inp = [w for w in ws if w in INPROGRESS_WS]
+    if inp:
+        ilabel = " & ".join(WS_LABELS[w] for w in inp)
+        parts.append(f"{ilabel} — {remark_text[:140]}" if any_remark else f"{ilabel} — no remark logged")
+    if "project_lead" in ws:
+        parts.append("Project Lead")
+    if "rework" in ws:
+        parts.append("Flagged for rework")
+    insight = "; ".join(parts) if parts else "No workstream data recorded."
+
+    state = "complete" if completion == 100 else "incomplete"
+    return {
+        "workstreams": ws or ["other"], "label": label, "absent": False, "completion": completion,
+        "completion_state": state, "assigned": assigned, "completed": qced,
+        "show_trinity": show_trinity, "show_manual": show_manual, "flags": flags, "insight": insight,
+    }
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
