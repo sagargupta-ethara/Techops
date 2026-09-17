@@ -32,8 +32,8 @@ export default function Overview() {
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 stagger">
               <KpiStat testid="kpi-headcount" label="Headcount" value={data.metrics.headcount} icon={Users} accent
                        sub={`${data.hierarchy.pods.length} PODs · ${data.hierarchy.tpms.length} TPMs`} />
-              <KpiStat testid="kpi-target" label="Target Coverage" value={pctText(data.metrics.target_coverage.pct)} icon={Target}
-                       sub={`${data.metrics.target_coverage.num}/${data.metrics.target_coverage.den} assigned`} />
+              <KpiStat testid="kpi-target" label="Targets Assigned" value={pctText(data.metrics.target_coverage.pct)} icon={Target}
+                       sub={`${data.metrics.target_coverage.num}/${data.metrics.target_coverage.den} people have a task target`} />
               <KpiStat testid="kpi-trinity" label="Trinity Coverage" value={pctText(data.metrics.trinity_coverage.pct)} icon={Layers}
                        sub={`${data.metrics.trinity_coverage.num}/${data.metrics.trinity_coverage.den} people`} />
               <KpiStat testid="kpi-attention" label="Attention" value={data.metrics.attention} icon={ShieldAlert}

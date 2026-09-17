@@ -65,3 +65,12 @@ Sheet "Live Progression Tracker" → Master tab; reporting date 2026-09-17; ~333
   GET /api/backups, GET /api/backups/{date}/download?token=, POST /api/backups/run (admin);
   Data Health backups panel with per-day CSV download.
 - Verified: 53/53 backend tests pass; frontend E2E clean at 1920x800 and 390x844 (testing agent iteration 5).
+
+## Iteration 7 (2026-09) — KPI label clarity
+- Renamed Overview KPI card "Target Coverage" → "Targets Assigned" (sub: "207/333 people have a task target").
+  Metric = % of members with a value in the sheet's Assigned Target column. Verified via screenshot.
+
+## Next tasks
+- P1: Org-wide Blocker Digest (AI analysis across all PODs on Overview).
+- P1: Export Pod-wise Summary + blocker findings as CSV (admin).
+- P2: Status drill-down remarks; blocker/phase trends; clickable donut legends; density toggle/theming.
