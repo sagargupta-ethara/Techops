@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, ShieldAlert, Clock, AlertCircle } from "lucide-react";
+import { ArrowLeft, ShieldAlert, Clock, AlertCircle, Sparkles, RefreshCw } from "lucide-react";
 import api from "@/lib/api";
 import { PageContainer, CompletionBadge } from "@/components/Page";
 import KpiStat from "@/components/KpiStat";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
 import { pctText, cell, fmtDate } from "@/lib/format";
 
 const TRINITY_COLS = [
@@ -37,10 +38,26 @@ export default function PodDetail() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("overview");
   const [search, setSearch] = useState("");
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const { data, isLoading, isError } = useQuery({
     queryKey: ["pod", name],
     queryFn: () => api.get(`/pods/${encodeURIComponent(name)}`).then((r) => r.data),
   });
+
+  const current = analysis || data?.blocker_analysis;
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const { data: res } = await api.post(`/pods/${encodeURIComponent(name)}/analyze`);
+      setAnalysis(res);
+      toast.success("Blocker analysis ready");
+    } catch (e) {
+      toast.error("Analysis failed", { description: e.response?.data?.detail || e.message });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const people = (data?.people || []).filter(
     (p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.email.includes(search.toLowerCase())
@@ -89,11 +106,24 @@ export default function PodDetail() {
                 <KpiStat testid="pod-kpi-headcount" label="Headcount" value={data.metrics.headcount} accent />
                 <KpiStat testid="pod-kpi-complete" label="Complete"
                          value={data.metrics.completion.complete}
-                         sub={`${data.metrics.completion.incomplete} in progress · ${data.metrics.completion.absent} absent`} />
-                <KpiStat testid="pod-kpi-trinity" label="Trinity Coverage" value={pctText(data.metrics.trinity_coverage.pct)} />
+                         sub={`${data.metrics.completion.incomplete} in progress`} />
+                <KpiStat testid="pod-kpi-absent" label="Absent (Leave)" value={data.counts.on_leave} />
                 <KpiStat testid="pod-kpi-attention" label="Attention" value={data.metrics.attention}
                          sub={data.metrics.no_remark ? `${data.metrics.no_remark} no remark` : ""} />
               </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5" data-testid="pod-counts">
+                {[["Trinity", data.counts.trinity], ["Manual", data.counts.manual],
+                  ["Harness/GK", data.counts.harness], ["Manual QC", data.counts.manual_qc],
+                  ["Absent", data.counts.on_leave]].map(([l, v]) => (
+                  <div key={l} className="rounded-md border border-border bg-card px-3 py-2.5 text-center">
+                    <div className="font-mono text-xl font-semibold tabular">{v}</div>
+                    <div className="mt-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              <BlockerCard current={current} analyzing={analyzing} onRun={runAnalysis} />
 
               <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <DistroChart testid="pod-chart-workstream" title="What People Are Working On" data={data.metrics.workstream_mix} type="bar" />
@@ -201,8 +231,61 @@ export default function PodDetail() {
   );
 }
 
-function PeopleFilter({ search, setSearch, count }) {
+function BlockerCard({ current, analyzing, onRun }) {
+  const r = current?.result;
   return (
+    <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/5 p-4" data-testid="blocker-analysis">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 font-heading text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          <Sparkles className="h-4 w-4" /> AI Blocker Analysis
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] normal-case tracking-normal">Claude Haiku</span>
+        </h3>
+        <Button size="sm" variant="outline" onClick={onRun} disabled={analyzing}
+                data-testid="run-blocker-analysis" className="h-8 gap-1.5 text-xs">
+          <RefreshCw className={`h-3.5 w-3.5 ${analyzing ? "animate-spin" : ""}`} />
+          {analyzing ? "Analyzing remarks…" : current ? "Re-run" : "Analyze remarks"}
+        </Button>
+      </div>
+
+      {!current && !analyzing && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Run an AI pass over every member remark to surface why completion is stuck and the top blockers.
+        </p>
+      )}
+
+      {r && (
+        <div className="mt-3 space-y-3 text-sm" data-testid="blocker-result">
+          <p className="font-medium">{r.headline}</p>
+          {r.blockers?.length > 0 && (
+            <ul className="space-y-1.5">
+              {r.blockers.map((b, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-700 dark:text-amber-400">
+                    {b.count ?? "?"}
+                  </span>
+                  <span><span className="font-medium">{b.issue}</span> — <span className="text-muted-foreground">{b.detail}</span></span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {r.recommendation && (
+            <div className="rounded border border-border bg-card p-2.5">
+              <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Recommendation</span>
+              <p className="mt-0.5">{r.recommendation}</p>
+            </div>
+          )}
+          {current?.generated_at && (
+            <p className="text-[11px] text-muted-foreground">
+              Generated {fmtDate(current.generated_at)}{r.no_remark_count != null ? ` · ${r.no_remark_count} entries had no remark` : ""}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PeopleFilter({ search, setSearch, count }) {  return (
     <div className="mb-3 flex items-center gap-3">
       <Input data-testid="pod-people-search" placeholder="Search this POD…" value={search}
              onChange={(e) => setSearch(e.target.value)} className="h-9 max-w-xs text-sm" />

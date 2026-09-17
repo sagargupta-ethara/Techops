@@ -2,10 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useFilters } from "@/lib/useFilters";
-import { PageContainer, PageHeader, CoverageBar } from "@/components/Page";
+import { PageContainer, PageHeader } from "@/components/Page";
 import GlobalFilterBar from "@/components/GlobalFilterBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronRight } from "lucide-react";
+
+const COUNT_COLS = [
+  ["headcount", "Headcount"], ["pod_count", "PODs"], ["project_count", "Projects"],
+  ["trinity", "Trinity"], ["manual", "Manual"], ["harness", "Harness/GK"],
+  ["manual_qc", "Manual QC"], ["absent", "Absent"], ["attention", "Attention"],
+];
 
 export default function Tpms() {
   const { filters } = useFilters();
@@ -20,22 +26,19 @@ export default function Tpms() {
     <>
       <GlobalFilterBar />
       <PageContainer>
-        <PageHeader title="TPMs" subtitle="Technical Program Managers and their POD portfolios" />
+        <PageHeader title="TPMs" subtitle="Headcount and workstream distribution per Technical Program Manager" />
         {isLoading ? (
           <Skeleton className="h-64 rounded-md" />
         ) : (
-          <div className="overflow-hidden rounded-md border border-border bg-card">
-            <table className="w-full text-sm" data-testid="tpms-table">
+          <div className="overflow-x-auto rounded-md border border-border bg-card thin-scroll">
+            <table className="w-full min-w-[760px] text-sm" data-testid="tpms-table">
               <caption className="sr-only">TPM summary table</caption>
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-2.5 font-medium">TPM</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Headcount</th>
-                  <th className="px-4 py-2.5 text-right font-medium">PODs</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Projects</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Attention</th>
-                  <th className="px-4 py-2.5 font-medium">Target</th>
-                  <th className="px-4 py-2.5 font-medium">Trinity</th>
+                  {COUNT_COLS.map(([k, label]) => (
+                    <th key={k} className="px-4 py-2.5 text-right font-medium">{label}</th>
+                  ))}
                   <th className="px-4 py-2.5" />
                 </tr>
               </thead>
@@ -45,16 +48,13 @@ export default function Tpms() {
                       onClick={() => navigate(`/tpms/${encodeURIComponent(t.name)}`)}
                       className="cursor-pointer border-b border-border/60 transition-colors hover:bg-accent">
                     <td className="px-4 py-2.5 font-medium">{t.name}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular">{t.headcount}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular">{t.pod_count}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular">{t.project_count}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular">
-                      {t.attention > 0
-                        ? <span className="text-cyan-600 dark:text-cyan-400">{t.attention}</span>
-                        : "0"}
-                    </td>
-                    <td className="px-4 py-2.5"><CoverageBar value={t.target_coverage} /></td>
-                    <td className="px-4 py-2.5"><CoverageBar value={t.trinity_coverage} /></td>
+                    {COUNT_COLS.map(([k]) => (
+                      <td key={k} className={`px-4 py-2.5 text-right font-mono tabular ${
+                        k === "attention" && t[k] > 0 ? "text-cyan-600 dark:text-cyan-400"
+                        : k === "absent" && t[k] > 0 ? "text-slate-500" : ""}`}>
+                        {t[k]}
+                      </td>
+                    ))}
                     <td className="px-4 py-2.5 text-right"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
                   </tr>
                 ))}

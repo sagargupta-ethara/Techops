@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
 import domain as D
+from analysis import analyze_blockers
 from sheets_adapter import SheetsAdapter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -617,13 +618,14 @@ async def tpms(user: dict = Depends(get_current_user), date: str = Query(None)):
     rows = []
     for name, members in groups.items():
         m = compute_metrics(members)
+        c = _ws_counts(members)
         rows.append({
             "name": name, "headcount": m["headcount"],
             "pod_count": len({p["pod"] for p in members if p.get("pod")}),
             "project_count": len({p["project_name"] for p in members if p.get("project_name")}),
             "attention": m["attention"],
-            "target_coverage": m["target_coverage"]["pct"],
-            "trinity_coverage": m["trinity_coverage"]["pct"],
+            "trinity": c["trinity"], "manual": c["manual"], "harness": c["harness"],
+            "manual_qc": c["manual_qc"], "absent": c["on_leave"],
         })
     rows.sort(key=lambda x: -x["headcount"])
     return {"reporting_date": snap["reporting_date"], "tpms": rows}
@@ -654,7 +656,8 @@ async def tpm_detail(name: str, user: dict = Depends(get_current_user), date: st
         f"{tm['completion']['absent']} on leave; {tm['attention']} flagged for attention."
     )
     return {"name": name, "reporting_date": snap["reporting_date"],
-            "metrics": tm, "overview_insight": overall, "pods": pod_rows}
+            "metrics": tm, "counts": _ws_counts(members),
+            "overview_insight": overall, "pods": pod_rows}
 
 
 @api.get("/pods")
@@ -715,16 +718,43 @@ async def pod_detail(name: str, user: dict = Depends(get_current_user), date: st
         for p in sorted(members, key=lambda x: x.get("name", ""))
     ]
     overview_insight = _pod_overview_insight(name, members, m)
+    cached = await db.blocker_analyses.find_one(
+        {"pod": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"]},
+        {"_id": 0})
 
     return {
         "name": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"],
         "tpm": members[0].get("tpm", ""),
         "metrics": m,
+        "counts": _ws_counts(members),
         "overview_insight": overview_insight,
         "member_insights": member_insights,
         "people": [strip_person(p) for p in filtered],
         "changes": events,
+        "blocker_analysis": cached,
     }
+
+
+@api.post("/pods/{name}/analyze")
+async def pod_analyze(name: str, user: dict = Depends(get_current_user), date: str = Query(None)):
+    snap, people = await _people_and_snap(date)
+    members = [p for p in people if (p.get("pod") or "Unknown") == name]
+    if not members:
+        raise HTTPException(status_code=404, detail="Not found")
+    m = compute_metrics(members)
+    try:
+        result = await analyze_blockers(name, members, m)
+    except Exception as exc:
+        logger.error("Blocker analysis failed for %s: %s", name, exc)
+        raise HTTPException(status_code=502, detail=f"Analysis failed: {type(exc).__name__}")
+    doc = {
+        "pod": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"],
+        "generated_at": D.now_iso(), "generated_by": user["email"], "result": result,
+    }
+    await db.blocker_analyses.update_one(
+        {"pod": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"]},
+        {"$set": doc}, upsert=True)
+    return doc
 
 
 def _pod_overview_insight(name, members, m):
