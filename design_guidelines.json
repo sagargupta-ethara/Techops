@@ -1,0 +1,142 @@
+{
+  "project_name": "Live POD Operations Dashboard",
+  "archetype": "THE PERFORMANCE PRO / COMMAND CENTER",
+  "theme_strategy": "Dark-first primary command-center aesthetic with a complete 1:1 functional light theme switch",
+  "typography": {
+    "font_family_heading": "Cabinet Grotesk, Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "font_family_body": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "font_family_mono": "JetBrains Mono, 'Fira Code', 'Courier New', monospace",
+    "heading_rules": "Use tight letter-spacing (tracking-tight) for headings above 24px. Never use Inter for main headings or subheadings.",
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight",
+      "h2": "text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight",
+      "h3": "text-lg sm:text-xl font-semibold tracking-normal",
+      "h4_card_title": "text-sm sm:text-base font-semibold tracking-wide uppercase text-muted-foreground",
+      "body": "text-sm sm:text-base leading-relaxed font-normal",
+      "small_label": "text-xs font-mono font-medium tracking-wider uppercase text-muted-foreground"
+    }
+  },
+  "colors": {
+    "dark_mode": {
+      "background_canvas": "hsl(222, 47%, 7%)",
+      "surface_card": "hsl(222, 40%, 10%)",
+      "surface_hover": "hsl(222, 35%, 14%)",
+      "border_subtle": "hsl(222, 25%, 18%)",
+      "border_focus": "hsl(217, 91%, 60%)",
+      "text_primary": "hsl(210, 40%, 98%)",
+      "text_secondary": "hsl(215, 20%, 65%)",
+      "accent_primary": "hsl(217, 91%, 60%)",
+      "accent_glow": "rgba(59, 130, 246, 0.15)"
+    },
+    "light_mode": {
+      "background_canvas": "hsl(210, 40%, 98%)",
+      "surface_card": "hsl(0, 0%, 100%)",
+      "surface_hover": "hsl(214, 32%, 93%)",
+      "border_subtle": "hsl(214, 32%, 88%)",
+      "border_focus": "hsl(221, 83%, 53%)",
+      "text_primary": "hsl(222, 47%, 11%)",
+      "text_secondary": "hsl(215, 25%, 40%)",
+      "accent_primary": "hsl(221, 83%, 53%)",
+      "accent_glow": "rgba(37, 99, 235, 0.12)"
+    },
+    "semantic_status_tokens": {
+      "fresh_active": {
+        "text": "text-emerald-500 dark:text-emerald-400",
+        "bg": "bg-emerald-500/10 dark:bg-emerald-500/15",
+        "border": "border-emerald-500/30 dark:border-emerald-500/40",
+        "label": "Fresh / Active",
+        "icon": "CheckCircle2"
+      },
+      "stale_warning": {
+        "text": "text-amber-500 dark:text-amber-400",
+        "bg": "bg-amber-500/10 dark:bg-amber-500/15",
+        "border": "border-amber-500/30 dark:border-amber-500/40",
+        "label": "Stale Data",
+        "icon": "AlertTriangle"
+      },
+      "failed_danger": {
+        "text": "text-rose-500 dark:text-rose-400",
+        "bg": "bg-rose-500/10 dark:bg-rose-500/15",
+        "border": "border-rose-500/30 dark:border-rose-500/40",
+        "label": "Sync Failed",
+        "icon": "AlertOctagon"
+      },
+      "quarantine_info": {
+        "text": "text-cyan-500 dark:text-cyan-400",
+        "bg": "bg-cyan-500/10 dark:bg-cyan-500/15",
+        "border": "border-cyan-500/30 dark:border-cyan-500/40",
+        "label": "Quarantined / Attention Required",
+        "icon": "ShieldAlert"
+      }
+    },
+    "chart_palette": [
+      "hsl(217, 91%, 60%)",
+      "hsl(160, 84%, 39%)",
+      "hsl(38, 92%, 50%)",
+      "hsl(340, 82%, 52%)",
+      "hsl(271, 91%, 65%)",
+      "hsl(189, 94%, 43%)"
+    ]
+  },
+  "layout_and_grid": {
+    "spacing_base": "4px grid system (p-1=4px, p-2=8px, p-3=12px, p-4=16px, p-6=24px, p-8=32px)",
+    "container_max_width": "max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8",
+    "bento_grid_mode": "MODE B: High Density Command Center Grid",
+    "grid_structure": "grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6",
+    "anti_pattern_warning": "NO generic 3-card SaaS stack. Use dynamic asymmetric density ratios (e.g., 2-col KPI strip + live feed + wide chart)."
+  },
+  "component_guidelines": {
+    "app_header_nav": {
+      "desktop": "Left sidebar with sticky collapsed state or top high-density command bar with live sync freshness badge, search trigger (Cmd+K), and dark/light toggle",
+      "mobile": "Bottom fixed navigation dock with drawer trigger for filters"
+    },
+    "tables": {
+      "style": "Dense tabular layout with monospace numbers, visible grid cell borders, sticky headers, inline change indicators, and row click drawer/modal detail triggers",
+      "requirement": "Must include search, column sorting, pagination/virtualization, and accessible table caption/summary"
+    },
+    "cards": {
+      "style": "Flat card surfaces with 1px border-subtle, sharp/subtle 6px corner radii (rounded-md), subtle hover background highlights, and clear section dividers"
+    },
+    "charts": {
+      "style": "High-contrast Recharts/Shadcn charts with custom tooltips, legend toggle, and accessible fallback tabular data modal or toggle"
+    },
+    "filters": {
+      "style": "Global cascading filter bar persisted in URL query parameters with active filter badges, clear-all button, and slide-over panel on mobile"
+    }
+  },
+  "motion_and_animations": {
+    "philosophy": "Functional micro-interactions for state transitions and tab switches. Strict prefers-reduced-motion compliance.",
+    "hover_transitions": "transition-colors duration-150 ease-out",
+    "reduced_motion_rule": "Wrap motion wrappers in motion-safe: animate classes or respect system reduced-motion query",
+    "forbidden": "NO decorative continuous spinning graphics or distracting looping animations"
+  },
+  "accessibility_and_wcag": {
+    "level": "WCAG 2.2 AA",
+    "contrast_ratio": "Minimum 4.5:1 for standard body text, 3:1 for large display titles and UI boundaries",
+    "interactive_states": "All focusable elements must feature visible outline rings (focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2)",
+    "status_rule": "Never convey status by color alone. ALWAYS pair color with explicit icon + text label."
+  },
+  "testing_and_testids": {
+    "rule": "Every interactive element, metric callout, filter input, table row, tab button, and status indicator MUST include a data-testid attribute in kebab-case.",
+    "examples": [
+      "data-testid='exec-kpi-headcount'",
+      "data-testid='data-health-sync-now-button'",
+      "data-testid='global-filter-tpm-select'",
+      "data-testid='users-table-row-user-123'",
+      "data-testid='theme-toggle-button'"
+    ]
+  },
+  "image_urls": {
+    "command_center_bg": "https://images.unsplash.com/photo-1737502483541-92e91801cfaf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwzfHxvcGVyYXRpb25zJTIwY29tbWFuZCUyMGNlbnRlciUyMGRhcmslMjBVSSUyMGRhc2hib2FyZCUyMGF2YXRhcnxlbnwwfHx8fDE3ODk2NDg2MDl8MA&ixlib=rb-4.1.0&q=85",
+    "usage_notes": "Use command_center_bg sparingly as a subtle background pattern or modal backdrop if needed."
+  },
+  "instructions_to_main_agent": [
+    "Ensure the dashboard reads live sheet/backend mock data seamlessly with instant feedback.",
+    "Build out all required tabs: Executive Overview, TPMs, PODs Drill-down, Users Directory & Profile, Audit Workspace, Data Health.",
+    "Implement URL-persisted cascading filters for date range, TPM, POD, user search, role, work status, and workflow phase.",
+    "Always support 1:1 Dark Mode and Light Mode with flawless contrast.",
+    "Never use generic AI emojis (🤖, 💡, 🔮) for UI icons; strictly use lucide-react or @phosphor-icons/react icons.",
+    "Include data-testid on all key UI controls and metrics."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": "Follow dense, command-center Fluent 2 inspired layout principles. Use subtle 1px borders, high legibility monospace numbers for operational metrics, clear status badges (icon + text), and generous keyboard accessibility."
+}
