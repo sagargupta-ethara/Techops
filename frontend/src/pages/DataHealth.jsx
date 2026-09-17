@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Database, Clock, Boxes, AlertTriangle } from "lucide-react";
+import { RefreshCw, Database, Clock, Boxes, AlertTriangle, DatabaseBackup, Download } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PageContainer, PageHeader } from "@/components/Page";
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { fmtDate } from "@/lib/format";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const STATE_LABEL = { fresh: "Fresh", stale: "Stale", sync_failed: "Sync Failed", unavailable: "Unavailable" };
 const RUN_CLS = {
@@ -25,6 +27,10 @@ export default function DataHealth() {
     queryFn: () => api.get("/data-health").then((r) => r.data),
     refetchInterval: 15000,
   });
+  const { data: backups, refetch: refetchBackups } = useQuery({
+    queryKey: ["backups"],
+    queryFn: () => api.get("/backups").then((r) => r.data),
+  });
 
   const doSync = async () => {
     setSyncing(true);
@@ -38,6 +44,18 @@ export default function DataHealth() {
       setSyncing(false);
     }
   };
+
+  const runBackup = async () => {
+    try {
+      const { data: res } = await api.post("/backups/run");
+      toast.success("Backup captured", { description: `${res.row_count} rows` });
+      refetchBackups();
+    } catch (e) {
+      toast.error("Backup failed", { description: e.response?.data?.detail || e.message });
+    }
+  };
+
+  const downloadUrl = (date) => `${API}/backups/${date}/download?token=${localStorage.getItem("pod_token")}`;
 
   return (
     <PageContainer>
@@ -115,6 +133,54 @@ export default function DataHealth() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
+            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+              <div className="flex items-center gap-2 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                <DatabaseBackup className="h-4 w-4" /> Daily CSV Backups
+                <span className="text-[11px] font-normal normal-case tracking-normal">auto at {backups?.backup_hour_ist ?? 4}:00 IST</span>
+              </div>
+              {user?.role === "admin" && (
+                <Button variant="outline" size="sm" onClick={runBackup} data-testid="run-backup-button" className="h-8 gap-1.5 text-xs">
+                  <DatabaseBackup className="h-3.5 w-3.5" /> Back up now
+                </Button>
+              )}
+            </div>
+            {!backups?.backups?.length ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">No backups yet.</div>
+            ) : (
+              <table className="w-full text-sm" data-testid="backups-table">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2 font-medium">Date</th>
+                    <th className="px-4 py-2 text-right font-medium">Rows</th>
+                    <th className="px-4 py-2 text-right font-medium">Size</th>
+                    <th className="px-4 py-2 font-medium">Captured</th>
+                    <th className="px-4 py-2 font-medium">Trigger</th>
+                    <th className="px-4 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {backups.backups.map((b) => (
+                    <tr key={b.backup_date} className="border-b border-border/60" data-testid={`backup-row-${b.backup_date}`}>
+                      <td className="px-4 py-2 font-mono">{b.backup_date}</td>
+                      <td className="px-4 py-2 text-right font-mono">{b.row_count}</td>
+                      <td className="px-4 py-2 text-right font-mono text-muted-foreground">{(b.size_bytes / 1024).toFixed(0)} KB</td>
+                      <td className="px-4 py-2 font-mono text-xs">{fmtDate(b.created_at)}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{b.trigger}</td>
+                      <td className="px-4 py-2 text-right">
+                        <a href={downloadUrl(b.backup_date)} download
+                           data-testid={`download-backup-${b.backup_date}`}
+                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                          <Download className="h-3.5 w-3.5" /> CSV
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}

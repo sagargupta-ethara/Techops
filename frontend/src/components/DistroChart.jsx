@@ -27,7 +27,7 @@ export default function DistroChart({ title, data, type = "bar", testid }) {
   const total = rows.reduce((a, b) => a + b.count, 0);
 
   return (
-    <div data-testid={testid} className="rounded-md border border-border bg-card p-4">
+    <div data-testid={testid} className="card-lift rounded-xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           {title}

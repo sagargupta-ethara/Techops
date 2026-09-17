@@ -26,6 +26,17 @@ export default function Login() {
     else setError(res.error);
   };
 
+  const quickLogin = async (em, pw) => {
+    setBusy(true);
+    setError("");
+    setEmail(em);
+    setPassword(pw);
+    const res = await login(em, pw);
+    setBusy(false);
+    if (res.ok) navigate("/overview");
+    else setError(res.error);
+  };
+
   return (
     <div className="grid min-h-screen grid-cols-1 bg-background lg:grid-cols-2">
       <div className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-card p-12 lg:flex">
@@ -77,6 +88,27 @@ export default function Login() {
           <Button type="submit" className="w-full" data-testid="login-submit" disabled={busy}>
             {busy ? "Signing in…" : "Sign in"}
           </Button>
+
+          <div className="relative py-1 text-center">
+            <span className="relative z-10 bg-background px-3 text-xs uppercase tracking-wider text-muted-foreground">Quick login</span>
+            <span className="absolute left-0 top-1/2 h-px w-full bg-border" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button type="button" variant="outline" disabled={busy}
+                    data-testid="quick-login-admin"
+                    onClick={() => quickLogin("admin@pod.ops", "PodOps@2026")}
+                    className="flex-col items-start gap-0.5 h-auto py-2.5">
+              <span className="text-sm font-semibold">Admin</span>
+              <span className="text-[11px] font-normal text-muted-foreground">Full access + sync</span>
+            </Button>
+            <Button type="button" variant="outline" disabled={busy}
+                    data-testid="quick-login-viewer"
+                    onClick={() => quickLogin("viewer@pod.ops", "Viewer@2026")}
+                    className="flex-col items-start gap-0.5 h-auto py-2.5">
+              <span className="text-sm font-semibold">Viewer</span>
+              <span className="text-[11px] font-normal text-muted-foreground">Read-only</span>
+            </Button>
+          </div>
         </form>
       </div>
     </div>

@@ -2,7 +2,7 @@ export default function KpiStat({ label, value, sub, accent = false, testid, ico
   return (
     <div
       data-testid={testid}
-      className="rounded-md border border-border bg-card p-4 sm:p-5 transition-colors duration-150 hover:bg-accent/40"
+      className="card-lift rounded-xl border border-border bg-card p-4 sm:p-5"
     >
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-mono font-medium uppercase tracking-wider text-muted-foreground">

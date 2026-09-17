@@ -18,9 +18,9 @@ export default function TpmDetail() {
 
   return (
     <PageContainer>
-      <Button variant="ghost" size="sm" onClick={() => navigate("/tpms")}
-              className="mb-3 gap-1.5 text-muted-foreground" data-testid="back-button">
-        <ArrowLeft className="h-4 w-4" /> All TPMs
+      <Button variant="ghost" size="sm" onClick={() => navigate(-1)}
+              className="mb-3 gap-1.5 text-muted-foreground hover:text-foreground" data-testid="back-button">
+        <ArrowLeft className="h-4 w-4" /> Back
       </Button>
       {isError ? (
         <div className="rounded-md border border-border bg-card p-8 text-center text-muted-foreground">TPM not found.</div>

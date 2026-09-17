@@ -34,7 +34,7 @@ export default function Overview() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 stagger">
               <KpiStat testid="kpi-headcount" label="Headcount" value={data.metrics.headcount} icon={Users} accent
                        sub={`${data.hierarchy.pods.length} PODs · ${data.hierarchy.tpms.length} TPMs`} />
               <KpiStat testid="kpi-target" label="Target Coverage" value={pctText(data.metrics.target_coverage.pct)} icon={Target}

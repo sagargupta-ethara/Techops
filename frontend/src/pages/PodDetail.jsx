@@ -66,9 +66,9 @@ export default function PodDetail() {
 
   return (
     <PageContainer>
-      <Button variant="ghost" size="sm" onClick={() => navigate("/pods")}
-              className="mb-3 gap-1.5 text-muted-foreground" data-testid="back-button">
-        <ArrowLeft className="h-4 w-4" /> All PODs
+      <Button variant="ghost" size="sm" onClick={() => navigate(-1)}
+              className="mb-3 gap-1.5 text-muted-foreground hover:text-foreground" data-testid="back-button">
+        <ArrowLeft className="h-4 w-4" /> Back
       </Button>
 
       {isError ? (

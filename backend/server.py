@@ -11,6 +11,8 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import asyncio
+import csv
+import io
 import logging
 import os
 import uuid
@@ -19,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
@@ -29,6 +32,9 @@ from sheets_adapter import SheetsAdapter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("pod-dashboard")
+
+IST = timezone(timedelta(hours=5, minutes=30))
+BACKUP_HOUR_IST = 4
 
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
@@ -1007,6 +1013,79 @@ async def live():
     return {"status": "ok"}
 
 
+# ----------------------------- Daily CSV backup -----------------------------
+def _rows_to_csv(values: list[list[str]]) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    for row in values:
+        w.writerow(row)
+    return buf.getvalue()
+
+
+async def backup_now(trigger: str = "scheduled") -> dict:
+    today = datetime.now(IST).strftime("%Y-%m-%d")
+    try:
+        raw = await adapter.read_master()
+    except Exception as exc:
+        logger.error("CSV backup read failed: %s", exc)
+        return {"status": "failed", "reason": str(exc)}
+    values = raw.get("values", [])
+    csv_text = _rows_to_csv(values)
+    doc = {
+        "backup_date": today, "created_at": D.now_iso(), "trigger": trigger,
+        "workbook_title": raw.get("title"), "row_count": max(len(values) - 2, 0),
+        "size_bytes": len(csv_text.encode()), "csv": csv_text,
+    }
+    await db.csv_backups.update_one({"backup_date": today}, {"$set": doc}, upsert=True)
+    logger.info("CSV backup stored for %s (%d rows)", today, doc["row_count"])
+    return {"status": "ok", "backup_date": today, "row_count": doc["row_count"],
+            "size_bytes": doc["size_bytes"]}
+
+
+async def backup_scheduler():
+    await asyncio.sleep(5)
+    # Ensure today's backup exists on boot.
+    today = datetime.now(IST).strftime("%Y-%m-%d")
+    if not await db.csv_backups.find_one({"backup_date": today}):
+        await backup_now("startup")
+    while True:
+        now = datetime.now(IST)
+        nxt = now.replace(hour=BACKUP_HOUR_IST, minute=0, second=0, microsecond=0)
+        if nxt <= now:
+            nxt += timedelta(days=1)
+        await asyncio.sleep((nxt - now).total_seconds())
+        await backup_now("scheduled")
+
+
+@api.get("/backups")
+async def list_backups(user: dict = Depends(get_current_user)):
+    docs = await db.csv_backups.find({}, {"_id": 0, "csv": 0}).sort("backup_date", -1).to_list(400)
+    return {"backups": docs, "backup_hour_ist": BACKUP_HOUR_IST}
+
+
+@api.get("/backups/{backup_date}/download")
+async def download_backup(backup_date: str, token: str = Query(None), request: Request = None):
+    # Allow token via query for direct <a download> links, else header.
+    if token:
+        try:
+            jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    else:
+        await get_current_user(request)
+    doc = await db.csv_backups.find_one({"backup_date": backup_date})
+    if not doc:
+        raise HTTPException(status_code=404, detail="No backup for that date")
+    return PlainTextResponse(
+        doc["csv"], media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="master-{backup_date}.csv"'})
+
+
+@api.post("/backups/run")
+async def run_backup(user: dict = Depends(require_admin)):
+    return await backup_now("manual")
+
+
 # ----------------------------- Startup -----------------------------
 async def seed_users():
     accounts = [
@@ -1034,7 +1113,8 @@ async def startup():
     await db.sync_runs.create_index([("started_at", -1)])
     await seed_users()
     asyncio.create_task(poller())
-    logger.info("Startup complete; poller scheduled.")
+    asyncio.create_task(backup_scheduler())
+    logger.info("Startup complete; poller + daily backup scheduled.")
 
 
 @app.on_event("shutdown")
