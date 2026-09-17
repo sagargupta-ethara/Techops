@@ -453,6 +453,106 @@ async def meta(user: dict = Depends(get_current_user)):
     }
 
 
+def _primary_bucket(ws, raw):
+    if "trinity" in ws:
+        return "trinity"
+    if "manual_dataset" in ws or "trajectory" in ws:
+        return "manual"
+    if "harness" in ws or "generation_kit" in ws:
+        return "harness"
+    if "manual_qc" in ws:
+        return "manual_qc"
+    if "leave" in raw:
+        return "leave"
+    return "other"
+
+
+def _ws_counts(people):
+    trinity = manual = harness = manual_qc = on_leave = 0
+    t_target = m_target = m_completed = 0
+    has_m_completed = False
+    for p in people:
+        ws = p.get("progress", {}).get("workstreams", [])
+        raw = (p.get("tasking_status") or "").lower()
+        at = D.to_int(p.get("assigned_target"))
+        qc = D.to_int(p.get("tasks_qced"))
+        bucket = _primary_bucket(ws, raw)
+        if bucket == "trinity":
+            trinity += 1
+            if at:
+                t_target += at
+        elif bucket == "manual":
+            manual += 1
+            if at:
+                m_target += at
+            if qc is not None:
+                m_completed += qc
+                has_m_completed = True
+        elif bucket == "harness":
+            harness += 1
+        elif bucket == "manual_qc":
+            manual_qc += 1
+        elif bucket == "leave":
+            on_leave += 1
+    denom = t_target + m_target
+    overall = D.pct(m_completed, denom) if denom else None
+    return {
+        "members": len(people), "trinity": trinity, "manual": manual, "harness": harness,
+        "manual_qc": manual_qc, "on_leave": on_leave,
+        "trinity_target": t_target, "trinity_completed": None,
+        "manual_target": m_target, "manual_completed": m_completed if has_m_completed else None,
+        "overall_pct": overall,
+    }
+
+
+def _mode(people, key):
+    counts = {}
+    for p in people:
+        v = (p.get(key) or "").strip()
+        if v:
+            counts[v] = counts.get(v, 0) + 1
+    return max(counts, key=counts.get) if counts else ""
+
+
+@api.get("/summary")
+async def summary(user: dict = Depends(get_current_user), date: str = Query(None)):
+    snap, people = await _people_and_snap(date)
+    if not snap:
+        return {"empty": True}
+    groups = {}
+    for p in people:
+        groups.setdefault(p.get("pod") or "Unknown", []).append(p)
+
+    rows = []
+    for name, members in groups.items():
+        c = _ws_counts(members)
+        rows.append({
+            "name": name,
+            "internal_project": _mode(members, "internal_name"),
+            "project_category": _mode(members, "project_name"),
+            "tpm": members[0].get("tpm", ""),
+            **c,
+        })
+    rows.sort(key=lambda r: -r["members"])
+
+    tot = _ws_counts(people)
+    kpis = {
+        "pods": len(groups),
+        "members": tot["members"],
+        "trinity": tot["trinity"],
+        "manual": tot["manual"],
+        "harness": tot["harness"],
+        "manual_qc": tot["manual_qc"],
+        "on_leave": tot["on_leave"],
+        "trinity_shipped_pct": D.pct(0, tot["trinity_target"]) if tot["trinity_target"] else None,
+        "manual_completed": tot["manual_completed"] or 0,
+        "overall_pct": tot["overall_pct"],
+    }
+    return {"reporting_date": snap["reporting_date"], "kpis": kpis, "pods": rows}
+
+
+
+
 @api.get("/overview")
 async def overview(user: dict = Depends(get_current_user), date: str = Query(None),
                    tpm: str = Query(None), pod: str = Query(None), role: str = Query(None),

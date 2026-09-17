@@ -255,3 +255,116 @@ class TestSync:
     def test_viewer_forbidden(self, s, vh):
         r = s.post(f"{BASE_URL}/api/sync", headers=vh)
         assert r.status_code == 403
+
+
+# ---------------- Iteration 2: completion / workstream / insights ----------------
+class TestCompletion:
+    """Overview: metrics.completion + metrics.no_remark + metrics.workstream_mix."""
+
+    def test_overview_completion_shape(self, s, ah):
+        d = s.get(f"{BASE_URL}/api/overview", headers=ah).json()
+        m = d["metrics"]
+        assert "completion" in m and set(m["completion"].keys()) >= {"complete", "incomplete", "absent"}
+        c = m["completion"]
+        assert isinstance(c["complete"], int)
+        assert isinstance(c["incomplete"], int)
+        assert isinstance(c["absent"], int)
+        # Baseline expectations per review request (allow small drift +/- a few from live poller)
+        assert c["complete"] + c["incomplete"] + c["absent"] == m["headcount"]
+        assert c["absent"] >= 10 and c["absent"] <= 25  # ~17
+        assert c["complete"] >= 0 and c["complete"] <= 15  # ~1
+        assert c["incomplete"] >= 290 and c["incomplete"] <= 330  # ~315
+        assert isinstance(m["no_remark"], int) and m["no_remark"] >= 0
+        assert isinstance(m["workstream_mix"], list) and len(m["workstream_mix"]) >= 1
+        for row in m["workstream_mix"]:
+            assert "label" in row and "count" in row
+
+    def test_users_completeness_incomplete(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?completeness=incomplete&limit=1000", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert 290 <= d["total"] <= 330
+        for u in d["users"][:20]:
+            assert u["completion_state"] == "incomplete"
+            assert "workstream_label" in u
+            assert "insight" in u.get("progress", {})
+
+    def test_users_completeness_absent(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?completeness=absent&limit=1000", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert 10 <= d["total"] <= 25
+        for u in d["users"]:
+            assert u["completion_state"] == "absent"
+            # All absent people should be on Leave
+            tokens = [t.lower() for t in u.get("status_tokens", [])]
+            assert "leave" in tokens
+
+    def test_users_completeness_complete(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?completeness=complete&limit=1000", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["total"] >= 0
+        for u in d["users"]:
+            assert u["completion_state"] == "complete"
+            assert u.get("progress", {}).get("completion") == 100
+
+
+class TestPodInsights:
+    def test_pod_detail_insights(self, s, ah):
+        pods = s.get(f"{BASE_URL}/api/pods", headers=ah).json()["pods"]
+        name = pods[0]["name"]
+        r = s.get(f"{BASE_URL}/api/pods/{name}", headers=ah)
+        assert r.status_code == 200
+        d = r.json()
+        assert isinstance(d.get("overview_insight"), str) and len(d["overview_insight"]) > 10
+        mi = d.get("member_insights")
+        assert isinstance(mi, list) and len(mi) == d["metrics"]["headcount"]
+        first = mi[0]
+        for k in ("name", "status", "workstream", "completion_state", "insight", "flags"):
+            assert k in first, f"member_insights missing {k}"
+        assert "last_updated" in first  # may be None on baseline
+        assert d["metrics"]["completion"]["complete"] + d["metrics"]["completion"]["incomplete"] + d["metrics"]["completion"]["absent"] == d["metrics"]["headcount"]
+        assert isinstance(d["metrics"]["workstream_mix"], list)
+        # people[].progress.insight present
+        assert d["people"][0]["progress"]["insight"]
+
+    def test_pod_detail_404(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/pods/__no_such__", headers=ah)
+        assert r.status_code == 404
+
+
+class TestTpmInsights:
+    def test_tpm_detail_insight(self, s, ah):
+        tpms = s.get(f"{BASE_URL}/api/tpms", headers=ah).json()["tpms"]
+        name = tpms[0]["name"]
+        r = s.get(f"{BASE_URL}/api/tpms/{name}", headers=ah)
+        d = r.json()
+        assert isinstance(d.get("overview_insight"), str) and len(d["overview_insight"]) > 10
+        assert isinstance(d["pods"], list) and len(d["pods"]) >= 1
+        for pod in d["pods"]:
+            assert isinstance(pod.get("insight"), str) and len(pod["insight"]) > 5
+
+
+class TestFlagsAndAbsent:
+    def test_leave_person_absent(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?status=Leave&limit=1000", headers=ah)
+        assert r.status_code == 200
+        users = r.json()["users"]
+        assert len(users) > 0
+        # All 'Leave' people who have ONLY leave should be absent
+        # (some may have other statuses combined; but pure leave => absent)
+        pure_leave_absent = [u for u in users
+                             if [t.lower() for t in u.get("status_tokens", [])] == ["leave"]]
+        assert all(u["completion_state"] == "absent" for u in pure_leave_absent)
+
+    def test_harness_no_remark_flag(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/users?status=Harness&limit=1000", headers=ah)
+        assert r.status_code == 200
+        users = r.json()["users"]
+        # At least one harness person exists in the baseline; if empty remark, flag "no remark"
+        for u in users:
+            remark = (u.get("remarks") or "").strip() or (u.get("remark") or "").strip()
+            flags = u.get("progress", {}).get("flags", [])
+            if not remark:
+                assert "no remark" in flags, f"Expected 'no remark' flag for {u.get('email')}"

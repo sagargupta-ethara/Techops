@@ -29,10 +29,19 @@ multi-tab surfaces (Overview, TPMs, PODs, Users, Audit, Data Health).
 - Sync engine with baseline/no-op/change detection, snapshots, change_events, sync_runs (`server.py`).
 - 60s background poller + admin `POST /api/sync`.
 - JWT auth (admin + viewer seeded), all dashboard APIs (meta, overview, tpms, pods, users, audit, data-health).
-- Full frontend: Login, AppShell (sidebar/bottom-nav, freshness badge, theme toggle, sync-now),
-  Overview (KPIs/charts/insights/hierarchy), TPMs + detail, PODs + nested-tab detail,
-  Users + profile (Summary/Current/History/Audit), Audit workspace, Data Health.
-- Verified: 26/26 backend tests pass; frontend E2E 100% functional (testing agent iteration_1).
+- Status-driven workstream + completion engine (`domain.derive_progress`): per-person workstream
+  (Trinity / Manual Dataset / Trajectory / Manual QC / Harness / Generation Kit / Project Lead / Leave),
+  completion = 100 or NA, Leave = Absent, "no remark" flag for harness/gen-kit with empty remarks.
+  Empty cells render "No data" in the UI.
+- Per-member and per-POD insight banners with last-updated + current status; TPM overall insight.
+- Pod-wise Summary view (`/api/summary`): org KPI strip (Pods/Members/Trinity/Manual/Harness/Manual QC/
+  On Leave/Trinity Shipped/Manual Completed/Overall %) + per-POD table with Internal Project, Project
+  Category, workstream counts, Trinity/Manual targets & completion, Overall Progress % — mirrors the
+  sheet's Dashboard tab. Primary-bucket classification (Trinity > Manual > Harness > Manual QC > Leave).
+- Single-row global filter bar; Completeness filter = complete/incomplete/absent.
+- Full frontend: Login, AppShell, Overview (KPIs + MiniStats + workstream chart), TPMs + detail,
+  PODs (Pod-wise Summary) + nested-tab detail (with Member Summary), Users + profile, Audit, Data Health.
+- Verified: backend 35/35 tests pass; frontend E2E functional (testing agent iterations 1 & 2).
 
 ## Live data snapshot
 Sheet "Live Progression Tracker" → Master tab; reporting date 2026-09-17; ~333 people, 15 PODs, 4 TPMs.

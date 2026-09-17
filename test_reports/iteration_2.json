@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 2 validation of new completion/workstream/insight features. Backend: extended /app/backend/tests/backend_test.py from 26 -> 35 pytest cases; all 35 pass. New coverage: /api/overview.metrics.completion {complete=1, incomplete=315, absent=17} + no_remark (int) + workstream_mix (list); /api/users?completeness=complete|incomplete|absent bands (315 incomplete, 17 absent all with 'leave' token, ~1 complete); /api/pods/{name} returns overview_insight + member_insights (23 members with name/role/status/workstream/completion_state/insight/flags/last_updated) + metrics.workstream_mix + people[].progress.insight; /api/tpms/{name} returns overview_insight and each pods[] row has per-POD insight; person on 'Leave' -> completion_state='absent'; harness person with empty remark -> flags contains 'no remark'; 404 handling intact. Frontend E2E as admin: Overview shows MiniStat row (Complete / In Progress / Absent / No Remark), 'What People Are Working On (Workstream)' chart, plus KPI/status/role charts. GlobalFilterBar renders search+TPM+POD+Role+Status+Completeness+Attention-only in ONE horizontal row (y-range=0px); Completeness dropdown options are exactly complete/incomplete/absent; selecting a filter updates URL to ?completeness=absent; clear-all removes it. POD detail Overview has pod-overview-insight banner (\"POD Aniket Soni: 23 people — Trinity 22, Manual Dataset 13... 0 complete, 23 in progress, 0 on leave. 6 flagged for attention, 2 with no remark.\") and pod-member-insights list with 23 items, each showing name/role/status/insight/NA badge/last-updated. POD People tab has 'Working On' + 'Complete' columns. Trinity tab shows ENGRAM/FORGE/CRUCIBLE/Tracking columns with 'No data' for blanks. Manual tab shows Input Bundles/Trajectory/Tasks QCed/Remark with 'No data' for blanks and Complete + Flag columns (Attention, 'No remark' badges visible). Users directory shows NA and Absent completion badges. User profile has user-insight banner ('Working on: Trinity + Manual Dataset — ...'). TPM detail shows tpm-overview-insight and per-POD rows.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py now ~810 lines mixing auth + sync engine + query helpers + routes; still worth splitting into routers as functionality grows (carried over from iteration 1).",
+    "compute_metrics() completion pct uses (n - absent) as denominator — correct, but consider exposing 'considered' count explicitly for future clarity when both incomplete and absent > 0.",
+    "derive_progress() in domain.py: 'trinity' detection uses substring 'trinity' in raw tasking_status, but if a future status contained e.g. 'Post-Trinity Review' it would be miscategorized. Consider tokenizing on comma first then substring-match per token.",
+    "_pod_overview_insight uses only progress.workstreams tokens; if all members are 'other' the sentence renders 'no workstream data' which is acceptable but no test exists for it.",
+    "user_detail still loads all snapshots into memory (to_list(1000)); acceptable at 1 date, will scale linearly.",
+    "CORS uses allow_origins='*' with allow_credentials=True by default — browsers reject credentialed requests when origin is '*' (carried over)."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (35/35 pytest)", "frontend": "100% of new spec features verified"},
+  "test_credentials": "admin@pod.ops / PodOps@2026 ; viewer@pod.ops / Viewer@2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Live Google Sheets sync; baseline 2026-09-17 with 333 people, 15 PODs, 4 TPMs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Regression suite is /app/backend/tests/backend_test.py (35 tests, session-scoped tokens, junit at /app/test_reports/pytest/pytest_results.xml). New assertions use bands (complete 0-15, incomplete 290-330, absent 10-25) to accommodate 60s poller drift. POD detail cards use data-testid='pod-card-{name}' (buttons, not <tr>). POD tabs: pod-tab-{overview|people|work-status|trinity|manual|changes}. POD member list: pod-member-insights (ul) with li[data-testid=member-insight-{email}]. Insight banners: pod-overview-insight, tpm-overview-insight, user-insight. Completion badges render text '100%', 'NA', or 'Absent'. Empty cells render literal 'No data'. GlobalFilterBar clear button is filter-clear-all. UserDetail tab ids remain user-tab-{summary,current,history,audit}."
+}

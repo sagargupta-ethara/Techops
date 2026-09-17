@@ -1,75 +1,114 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import api from "@/lib/api";
 import { useFilters } from "@/lib/useFilters";
-import { PageContainer, PageHeader, CoverageBar } from "@/components/Page";
+import { PageContainer, PageHeader } from "@/components/Page";
 import GlobalFilterBar from "@/components/GlobalFilterBar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronRight } from "lucide-react";
+
+const KPI_DEFS = [
+  ["pods", "Pods"], ["members", "Members"], ["trinity", "Trinity"], ["manual", "Manual"],
+  ["harness", "Harness"], ["manual_qc", "Manual QC"], ["on_leave", "On Leave"],
+  ["trinity_shipped_pct", "Trinity Shipped"], ["manual_completed", "Manual Completed"],
+  ["overall_pct", "Overall %"],
+];
+
+function kval(kpis, key) {
+  const v = kpis[key];
+  if (key.endsWith("_pct")) return v == null ? "N/A" : `${v}%`;
+  return v;
+}
+
+const COLS = [
+  ["internal_project", "Internal Project"], ["project_category", "Project Category"],
+  ["members", "Members"], ["trinity", "Trinity"], ["manual", "Manual"], ["harness", "Harness"],
+  ["manual_qc", "Manual QC"], ["on_leave", "On Leave"], ["trinity_target", "Trinity Target"],
+  ["trinity_completed", "Trinity Completed"], ["manual_target", "Manual Target"],
+  ["manual_completed", "Manual Completed"], ["overall_pct", "Overall Progress"],
+];
+
+function cval(row, key) {
+  const v = row[key];
+  if (key === "overall_pct") return v == null ? "N/A" : `${v}%`;
+  if (key === "trinity_completed") return "N/A";
+  if (key === "manual_completed") return v == null ? "N/A" : v;
+  if (["internal_project", "project_category"].includes(key)) return v || "No data";
+  return v;
+}
 
 export default function Pods() {
   const { filters } = useFilters();
   const navigate = useNavigate();
   const qs = filters.date ? `?date=${filters.date}` : "";
   const { data, isLoading } = useQuery({
-    queryKey: ["pods", qs],
-    queryFn: () => api.get(`/pods${qs}`).then((r) => r.data),
+    queryKey: ["summary", qs],
+    queryFn: () => api.get(`/summary${qs}`).then((r) => r.data),
   });
 
-  const pods = (data?.pods || []).filter(
-    (p) => (!filters.tpm || p.tpm === filters.tpm) && (!filters.pod || p.name === filters.pod)
-  );
+  let pods = data?.pods || [];
+  if (filters.tpm) pods = pods.filter((p) => p.tpm === filters.tpm);
+  if (filters.pod) pods = pods.filter((p) => p.name === filters.pod);
 
   return (
     <>
       <GlobalFilterBar />
       <PageContainer>
-        <PageHeader title="PODs" subtitle="Per-POD operating status. Click a POD to drill into its workflow." />
-        {isLoading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40 rounded-md" />)}
-          </div>
+        <PageHeader title="Pod-wise Summary"
+                    subtitle="Live roll-up of Trinity / Manual / Harness workstreams per POD. Click a row to drill in." />
+
+        {isLoading || !data?.kpis ? (
+          <Skeleton className="h-24 rounded-md" />
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {pods.map((p) => (
-              <button key={p.name} data-testid={`pod-card-${p.name}`}
-                      onClick={() => navigate(`/pods/${encodeURIComponent(p.name)}`)}
-                      className="group rounded-md border border-border bg-card p-4 text-left transition-colors duration-150 hover:bg-accent/50">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-heading font-semibold">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">TPM · {p.tpm}</div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                </div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="font-mono text-2xl font-semibold tabular">{p.headcount}</span>
-                  <span className="text-xs text-muted-foreground">people</span>
-                  {p.attention > 0 && (
-                    <span className="ml-auto rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-600 dark:text-cyan-400">
-                      {p.attention} attention
-                    </span>
-                  )}
-                </div>
-                <div className="mt-3 space-y-1.5 text-xs">
-                  <Row label="Target" value={p.target_coverage} />
-                  <Row label="Trinity" value={p.trinity_coverage} />
-                  <Row label="Manual" value={p.manual_coverage} />
-                </div>
-              </button>
+          <div className="mb-6 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-5 lg:grid-cols-10"
+               data-testid="summary-kpis">
+            {KPI_DEFS.map(([k, label]) => (
+              <div key={k} className="bg-card px-3 py-3 text-center">
+                <div className="font-mono text-xl font-bold tabular">{kval(data.kpis, k)}</div>
+                <div className="mt-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">{label}</div>
+              </div>
             ))}
+          </div>
+        )}
+
+        {isLoading ? (
+          <Skeleton className="h-96 rounded-md" />
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-border bg-card thin-scroll">
+            <table className="w-full min-w-[1100px] text-sm" data-testid="summary-table">
+              <caption className="sr-only">Pod-wise summary</caption>
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="sticky left-0 bg-muted/40 px-4 py-2.5 font-medium">Pod Lead</th>
+                  {COLS.map(([k, label]) => (
+                    <th key={k} className={`px-3 py-2.5 font-medium ${k.match(/members|trinity|manual|harness|on_leave|target|completed|overall/) ? "text-right" : ""}`}>
+                      {label}
+                    </th>
+                  ))}
+                  <th className="px-3 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {pods.map((r) => (
+                  <tr key={r.name} data-testid={`summary-row-${r.name}`}
+                      onClick={() => navigate(`/pods/${encodeURIComponent(r.name)}`)}
+                      className="cursor-pointer border-b border-border/60 hover:bg-accent">
+                    <td className="sticky left-0 bg-card px-4 py-2 font-medium">{r.name}</td>
+                    {COLS.map(([k]) => (
+                      <td key={k} className={`px-3 py-2 ${typeof r[k] === "number" || k.match(/target|completed|overall/) ? "text-right font-mono tabular" : "text-muted-foreground"}`}>
+                        {k === "overall_pct" && r[k] != null ? (
+                          <span className={r[k] > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}>{cval(r, k)}</span>
+                        ) : cval(r, k)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 text-right"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </PageContainer>
     </>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <CoverageBar value={value} />
-    </div>
   );
 }
