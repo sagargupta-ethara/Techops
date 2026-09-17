@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { RunsSummaryCards, TrinityMatrix, ManualFunnel } from "@/components/PhaseSummary";
 import { toast } from "sonner";
 import { pctText, cell, fmtDate } from "@/lib/format";
 
@@ -36,7 +37,7 @@ const CLS_MAP = {
 export default function PodDetail() {
   const { name } = useParams();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("overall");
   const [search, setSearch] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -85,9 +86,9 @@ export default function PodDetail() {
 
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="mb-4 flex w-full flex-wrap justify-start gap-1 overflow-x-auto" data-testid="pod-tabs">
-              {["overview", "people", "work-status", "trinity", "manual", "changes"].map((t) => (
+              {["overall", "trinity", "manual", "people", "changes"].map((t) => (
                 <TabsTrigger key={t} value={t} data-testid={`pod-tab-${t}`} className="capitalize">
-                  {t.replace("-", " ")}
+                  {t}
                   {t === "changes" && data.changes.length > 0 && (
                     <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 text-[10px] text-primary">{data.changes.length}</span>
                   )}
@@ -95,7 +96,7 @@ export default function PodDetail() {
               ))}
             </TabsList>
 
-            <TabsContent value="overview">
+            <TabsContent value="overall">
               <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-4" data-testid="pod-overview-insight">
                 <div className="flex items-start gap-2 text-sm">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -121,6 +122,19 @@ export default function PodDetail() {
                     <div className="mt-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">{l}</div>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-4">
+                <h3 className="mb-2 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Runs & Phase Status
+                </h3>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="space-y-4">
+                    <RunsSummaryCards runs={data.phase_summary.trinity.runs_summary} testid="overall-runs" />
+                    <TrinityMatrix trinity={data.phase_summary.trinity} testid="overall-matrix" />
+                  </div>
+                  <ManualFunnel manual={data.phase_summary.manual} testid="overall-manual" />
+                </div>
               </div>
 
               <BlockerCard current={current} analyzing={analyzing} onRun={runAnalysis} />
@@ -162,34 +176,37 @@ export default function PodDetail() {
               </div>
             </TabsContent>
 
+            <TabsContent value="trinity">
+              <h3 className="mb-3 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Runs by area
+              </h3>
+              <RunsSummaryCards runs={data.phase_summary.trinity.runs_summary} testid="trinity-runs" />
+              <h3 className="mb-3 mt-5 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Phase status
+              </h3>
+              <TrinityMatrix trinity={data.phase_summary.trinity} testid="trinity-matrix" />
+              <h3 className="mb-3 mt-5 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                People
+              </h3>
+              <PeopleTable people={data.people} navigate={navigate} cols={TRINITY_COLS} completeness testid="pod-trinity-table" />
+            </TabsContent>
+
+            <TabsContent value="manual">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <ManualFunnel manual={data.phase_summary.manual} testid="manual-funnel" />
+                <DistroChart testid="pod-manual-status" title="Manual Tasking Status" data={data.metrics.status_distribution} type="bar" />
+              </div>
+              <h3 className="mb-3 mt-5 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                People
+              </h3>
+              <PeopleTable people={data.people} navigate={navigate} cols={MANUAL_COLS} completeness testid="pod-manual-table" />
+            </TabsContent>
+
             <TabsContent value="people">
               <PeopleFilter search={search} setSearch={setSearch} count={people.length} />
               <PeopleTable people={people} navigate={navigate}
                 cols={[["role", "Role"], ["project_name", "Project"], ["tasking_status", "Status"]]}
                 showInsight completeness testid="pod-people-table" />
-            </TabsContent>
-
-            <TabsContent value="work-status">
-              <DistroChart testid="pod-ws-chart" title="Tasking Status Distribution" data={data.metrics.status_distribution} type="bar" />
-              <div className="mt-4">
-                <PeopleTable people={data.people} navigate={navigate}
-                  cols={[["role", "Role"], ["tasking_status", "Tasking Status"], ["assigned_target", "Target"]]}
-                  showInsight completeness testid="pod-ws-table" />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="trinity">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Trinity workstream columns (Tracking.MD → Remarks). Empty cells show “No data”.
-              </p>
-              <PeopleTable people={data.people} navigate={navigate} cols={TRINITY_COLS} completeness testid="pod-trinity-table" />
-            </TabsContent>
-
-            <TabsContent value="manual">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Manual workstream columns (Input Bundles Created → Remark). Empty cells show “No data”.
-              </p>
-              <PeopleTable people={data.people} navigate={navigate} cols={MANUAL_COLS} completeness testid="pod-manual-table" />
             </TabsContent>
 
             <TabsContent value="changes">

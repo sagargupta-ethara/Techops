@@ -58,9 +58,16 @@ LONG_TEXT_FIELDS = {"remarks", "remark", "tracking_md"}
 
 SCHEMA_HASH = hashlib.sha256("|".join(HEADER_LABELS).encode()).hexdigest()[:16]
 
-# Statuses / dispositions that flag operational attention.
-ATTENTION_STATUS_TOKENS = {"rework"}
-ATTENTION_DISPOSITION_KEYWORDS = ("block", "stale", "hold", "pending")
+# Attention = no workstream data recorded anywhere (all Trinity + Manual phase
+# columns empty) and the person is not on leave. Any data in any phase column
+# (the merged Trinity block or the Manual block) means they are working.
+def is_attention(rec: dict) -> bool:
+    raw = (rec.get("tasking_status") or "").lower()
+    if "leave" in raw:
+        return False
+    if has_any(rec, TRINITY_FIELDS) or has_any(rec, MANUAL_FIELDS):
+        return False
+    return True
 
 
 def normalize_reporting_date(raw: str) -> str | None:
@@ -142,17 +149,6 @@ def semantic_hash(rec: dict) -> str:
     payload = {k: rec.get(k, "") for k in FIELD_KEYS}
     payload["status_tokens"] = sorted(t.lower() for t in rec.get("status_tokens", []))
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
-
-
-def is_attention(rec: dict) -> bool:
-    if any(t.lower() in ATTENTION_STATUS_TOKENS for t in rec.get("status_tokens", [])):
-        return True
-    for f in ("directive_disposition", "edict_disposition", "verdict_disposition",
-              "completion_status", "crucible_verdict"):
-        val = (rec.get(f) or "").lower()
-        if any(kw in val for kw in ATTENTION_DISPOSITION_KEYWORDS):
-            return True
-    return False
 
 
 def has_any(rec: dict, fields: list[str]) -> bool:

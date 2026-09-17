@@ -42,7 +42,7 @@ export default function Overview() {
               <KpiStat testid="kpi-trinity" label="Trinity Coverage" value={pctText(data.metrics.trinity_coverage.pct)} icon={Layers}
                        sub={`${data.metrics.trinity_coverage.num}/${data.metrics.trinity_coverage.den} people`} />
               <KpiStat testid="kpi-attention" label="Attention" value={data.metrics.attention} icon={ShieldAlert}
-                       sub={data.metrics.no_remark ? `${data.metrics.no_remark} with no remark` : "Rework / blocked workflow"} />
+                       sub={data.metrics.no_remark ? `${data.metrics.no_remark} with no remark` : "No Trinity/Manual data"} />
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">

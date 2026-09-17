@@ -596,7 +596,7 @@ async def overview(user: dict = Depends(get_current_user), date: str = Query(Non
                              "url": f"/users?completeness=&{cov_key}=missing"})
     if metrics["attention"]:
         insights.append({"kind": "attention",
-                         "text": f"{metrics['attention']} people flagged for attention (Rework / blocked workflow).",
+                         "text": f"{metrics['attention']} people flagged for attention (no Trinity/Manual data recorded).",
                          "url": "/users?attention=true"})
 
     return {
@@ -719,8 +719,9 @@ async def pod_detail(name: str, user: dict = Depends(get_current_user), date: st
     ]
     overview_insight = _pod_overview_insight(name, members, m)
     cached = await db.blocker_analyses.find_one(
-        {"pod": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"]},
+        {"pod": name, "reporting_date": snap["reporting_date"]},
         {"_id": 0})
+    phase_summary = compute_phase_summary(members)
 
     return {
         "name": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"],
@@ -731,6 +732,7 @@ async def pod_detail(name: str, user: dict = Depends(get_current_user), date: st
         "member_insights": member_insights,
         "people": [strip_person(p) for p in filtered],
         "changes": events,
+        "phase_summary": phase_summary,
         "blocker_analysis": cached,
     }
 
@@ -752,9 +754,90 @@ async def pod_analyze(name: str, user: dict = Depends(get_current_user), date: s
         "generated_at": D.now_iso(), "generated_by": user["email"], "result": result,
     }
     await db.blocker_analyses.update_one(
-        {"pod": name, "reporting_date": snap["reporting_date"], "revision": snap["revision"]},
+        {"pod": name, "reporting_date": snap["reporting_date"]},
         {"$set": doc}, upsert=True)
     return doc
+
+
+PHASE_BUCKETS = ["block", "run", "ship", "hold", "stale", "idle"]
+
+TRINITY_AREAS = [
+    ("engram", "Engram", "engram_phase", "directive_disposition", "engram_run_count"),
+    ("forge", "Forge", "forge_phase", "edict_disposition", "forge_run_count"),
+    ("crucible", "Crucible", "crucible_phase", "verdict_disposition", "crucible_run_count"),
+]
+
+
+def _phase_bucket(phase):
+    p = (phase or "").strip().lower()
+    if not p:
+        return None
+    if "not started" in p:
+        return "idle"
+    if p.startswith("0.5 - signed") or p.startswith("s -") or p.startswith("s-"):
+        return "ship"
+    return "run"
+
+
+def _disp_bucket(disp):
+    d = (disp or "").strip().upper()
+    if not d:
+        return None
+    if d.startswith("BLOCK") or d.startswith("BROKEN"):
+        return "block"
+    if d.startswith("STALE"):
+        return "stale"
+    if d.startswith("HOLD"):
+        return "hold"
+    if d.startswith("CURRENT"):
+        return "run"
+    if "NOT RUN" in d:
+        return "idle"
+    return None
+
+
+def _area_row(key, label, members, phase_f, disp_f, run_f):
+    buckets = {b: 0 for b in PHASE_BUCKETS}
+    run_sum = total = 0
+    for p in members:
+        bucket = _disp_bucket(p.get(disp_f)) or _phase_bucket(p.get(phase_f))
+        if bucket is None:
+            continue
+        buckets[bucket] += 1
+        total += 1
+        run_sum += D.to_int(p.get(run_f)) or 0
+    return {"area": label, "key": key, "total": total, "run_count": run_sum, "buckets": buckets}
+
+
+def compute_phase_summary(members):
+    trinity_people = [p for p in members if p.get("has_trinity")]
+    manual_people = [p for p in members if p.get("has_manual")]
+    rows = [_area_row(k, l, members, pf, df, rf) for k, l, pf, df, rf in TRINITY_AREAS]
+    total_row = {
+        "area": "Total", "key": "total",
+        "total": sum(r["total"] for r in rows),
+        "run_count": sum(r["run_count"] for r in rows),
+        "buckets": {b: sum(r["buckets"][b] for r in rows) for b in PHASE_BUCKETS},
+    }
+    runs_summary = {"engram": rows[0]["total"], "forge": rows[1]["total"], "crucible": rows[2]["total"]}
+
+    def si(k):
+        return sum(D.to_int(p.get(k)) or 0 for p in members)
+
+    manual = {
+        "people": len(manual_people),
+        "assigned": si("assigned_target"),
+        "bundles_created": si("input_bundles_created"),
+        "bundles_approved": si("input_bundles_approved"),
+        "trajectory": si("trajectory_generated"),
+        "qced": si("tasks_qced"),
+    }
+    return {
+        "statuses": PHASE_BUCKETS,
+        "trinity": {"people": len(trinity_people), "rows": rows, "total_row": total_row,
+                    "runs_summary": runs_summary},
+        "manual": manual,
+    }
 
 
 def _pod_overview_insight(name, members, m):
