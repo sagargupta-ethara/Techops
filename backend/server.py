@@ -778,7 +778,9 @@ def _phase_bucket(phase):
         return None
     if "not started" in p:
         return "idle"
-    if p.startswith("0.5 - signed") or p.startswith("s -") or p.startswith("s-"):
+    # Lifecycle: G→R→0→0.5 sign-off→0.5 signed→1→2→3→4→H→S(publication).
+    # Only S - publication counts as shipped.
+    if p.startswith("s -") or p.startswith("s-") or "publication" in p:
         return "ship"
     return "run"
 
@@ -800,11 +802,24 @@ def _disp_bucket(disp):
     return None
 
 
+def _classify(phase, disp):
+    """Combine phase (progress) and disposition (health) into one status.
+    Reaching publication (ship) wins; otherwise a BLOCK/STALE/HOLD disposition
+    wins; otherwise the phase implies Run/Idle."""
+    pb = _phase_bucket(phase)
+    if pb == "ship":
+        return "ship"
+    db = _disp_bucket(disp)
+    if db:
+        return db
+    return pb
+
+
 def _area_row(key, label, members, phase_f, disp_f, run_f):
     buckets = {b: 0 for b in PHASE_BUCKETS}
     run_sum = total = 0
     for p in members:
-        bucket = _disp_bucket(p.get(disp_f)) or _phase_bucket(p.get(phase_f))
+        bucket = _classify(p.get(phase_f), p.get(disp_f))
         if bucket is None:
             continue
         buckets[bucket] += 1
@@ -825,6 +840,19 @@ def compute_phase_summary(members):
     }
     runs_summary = {"engram": rows[0]["total"], "forge": rows[1]["total"], "crucible": rows[2]["total"]}
 
+    # Per-person area classification for cell drilldown.
+    detail = []
+    for p in members:
+        areas = {}
+        for k, _l, pf, df, _rf in TRINITY_AREAS:
+            b = _classify(p.get(pf), p.get(df))
+            if b:
+                areas[k] = {"bucket": b, "phase": (p.get(pf) or "").strip(),
+                            "disposition": (p.get(df) or "").strip()}
+        if areas:
+            detail.append({"email": p["email"], "name": p.get("name", ""),
+                           "role": p.get("role", ""), "areas": areas})
+
     def si(k):
         return sum(D.to_int(p.get(k)) or 0 for p in members)
 
@@ -839,7 +867,7 @@ def compute_phase_summary(members):
     return {
         "statuses": PHASE_BUCKETS,
         "trinity": {"people": len(trinity_people), "rows": rows, "total_row": total_row,
-                    "runs_summary": runs_summary},
+                    "runs_summary": runs_summary, "detail": detail},
         "manual": manual,
     }
 
