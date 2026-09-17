@@ -54,3 +54,14 @@ Sheet "Live Progression Tracker" → Master tab; reporting date 2026-09-17; ~333
 
 ## Next tasks
 - Await user review; then implement granular role grants and/or Cmd-K search if requested.
+
+## Iteration 5 (2026-06) — UI overhaul + fixes + backups
+- Fixed page-level horizontal overflow (wide tables now scroll inside their container; html/body overflow-x hidden; min-w-0 flex column) and top-bar alignment (64px, aligned to sidebar).
+- Fixed Back navigation (detail pages use history back; browser Back verified).
+- Renamed nav: TPM Analytics / POD Analytics / User Directory / Audit Trail / Data Health.
+- Quick-login buttons (Admin/Viewer) on login screen for post-deploy access.
+- Motion system: page-enter, staggered reveals, card-lift hovers, reduced-motion parity.
+- Daily CSV backup: captures full sheet as CSV at 04:00 IST, stacked day-wise in db.csv_backups;
+  GET /api/backups, GET /api/backups/{date}/download?token=, POST /api/backups/run (admin);
+  Data Health backups panel with per-day CSV download.
+- Verified: 53/53 backend tests pass; frontend E2E clean at 1920x800 and 390x844 (testing agent iteration 5).

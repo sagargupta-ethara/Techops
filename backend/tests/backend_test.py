@@ -559,3 +559,47 @@ class TestSummaryRegression:
         assert isinstance(d["pods"], list) and len(d["pods"]) >= 1
         assert d["kpis"]["members"] == 333
 
+
+
+# ---------------- Iteration 5: Daily CSV Backups ----------------
+class TestBackups:
+    def test_list_backups(self, s, ah):
+        r = s.get(f"{BASE_URL}/api/backups", headers=ah)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert "backups" in d and isinstance(d["backups"], list)
+        assert d.get("backup_hour_ist") == 4
+        assert len(d["backups"]) >= 1
+        b0 = d["backups"][0]
+        for k in ("backup_date", "row_count", "size_bytes", "created_at", "trigger"):
+            assert k in b0, f"missing {k}"
+        assert isinstance(b0["row_count"], int) and b0["row_count"] >= 300
+
+    def test_run_backup_admin(self, s, ah):
+        r = s.post(f"{BASE_URL}/api/backups/run", headers=ah, timeout=60)
+        assert r.status_code == 200
+        d = r.json()
+        assert d.get("status") == "ok"
+        assert d.get("row_count", 0) >= 300
+
+    def test_run_backup_viewer_forbidden(self, s, vh):
+        r = s.post(f"{BASE_URL}/api/backups/run", headers=vh)
+        assert r.status_code == 403
+
+    def test_download_backup_with_token(self, s, admin_token, ah):
+        docs = s.get(f"{BASE_URL}/api/backups", headers=ah).json()["backups"]
+        date = docs[0]["backup_date"]
+        r = s.get(f"{BASE_URL}/api/backups/{date}/download?token={admin_token}")
+        assert r.status_code == 200
+        assert "text/csv" in r.headers.get("Content-Type", "")
+        cd = r.headers.get("Content-Disposition", "")
+        assert "attachment" in cd and date in cd
+        # Should have header row; expect ~30 columns
+        first_line = r.text.split("\n", 1)[0]
+        cols = first_line.split(",")
+        assert len(cols) >= 25, f"expected ~30 header cols, got {len(cols)}"
+
+    def test_download_backup_invalid_token(self, s):
+        # Grab any date via unauth-attempt fallback: use today assumption via first known backup
+        r = s.get(f"{BASE_URL}/api/backups/2026-09-17/download?token=notavalidjwt")
+        assert r.status_code == 401
