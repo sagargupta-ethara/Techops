@@ -15,6 +15,7 @@ import csv
 import io
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -27,8 +28,12 @@ from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
 import domain as D
+import delivery as DL
+import operations as O
+from daily_progress_routes import create_router as create_daily_progress_router, seed_historical
 from analysis import analyze_blockers
 from sheets_adapter import SheetsAdapter
+from history_sources import prefer_backup_snapshot
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("pod-dashboard")
@@ -111,10 +116,44 @@ async def latest_snapshot():
     return await db.snapshots.find_one({}, sort=[("reporting_date", -1), ("revision", -1)])
 
 
+def backup_doc_to_snapshot(doc: dict) -> dict | None:
+    values = list(csv.reader(io.StringIO(doc.get("csv", ""))))
+    parsed = D.parse_rows(values)
+    if not parsed["header_ok"] or not parsed["people"]:
+        return None
+    reporting_date = doc["backup_date"]
+    people = [build_person_doc({**person, "reporting_date": reporting_date}) for person in parsed["people"]]
+    return {
+        "id": f"backup:{reporting_date}", "reporting_date": reporting_date,
+        "revision": 0, "created_at": doc.get("created_at"), "person_count": len(people),
+        "people": people, "source": "backup",
+        "backup_trigger": doc.get("trigger"),
+        "backup_created_at": doc.get("created_at"),
+    }
+
+
 async def snapshot_for_date(date: str | None):
     if not date:
         return await latest_snapshot()
-    return await db.snapshots.find_one({"reporting_date": date}, sort=[("revision", -1)])
+    backup = await db.csv_backups.find_one({"backup_date": date})
+    backup_snapshot = backup_doc_to_snapshot(backup) if backup else None
+    snapshot = await db.snapshots.find_one({"reporting_date": date}, sort=[("revision", -1)])
+    if snapshot:
+        snapshot["source"] = "snapshot"
+    return prefer_backup_snapshot(snapshot, backup_snapshot)
+
+
+def reporting_date_options(snapshot_dates: list[str], backup_dates: list[str]) -> list[dict[str, str]]:
+    snapshots = set(snapshot_dates)
+    backups = set(backup_dates)
+    return [
+        {
+            "date": date,
+            "source": "snapshot+backup" if date in snapshots and date in backups
+            else "snapshot" if date in snapshots else "backup",
+        }
+        for date in sorted(snapshots | backups, reverse=True)
+    ]
 
 
 def build_person_doc(rec: dict) -> dict:
@@ -316,6 +355,8 @@ def filter_people(people: list[dict], q: dict) -> list[dict]:
             continue
         if q.get("status") and q["status"].lower() not in p.get("status_tokens_lower", []):
             continue
+        if q.get("operation") and not O.matches_operation(p, q["operation"]):
+            continue
         if q.get("attention") and not p.get("is_attention"):
             continue
         band = q.get("completeness")
@@ -356,28 +397,30 @@ def status_distribution(people):
 
 def compute_metrics(people: list[dict]) -> dict:
     n = len(people)
-    target = sum(1 for p in people if (p.get("assigned_target") or "").strip())
-    trinity = sum(1 for p in people if p.get("has_trinity"))
-    manual = sum(1 for p in people if p.get("has_manual"))
-    attention = sum(1 for p in people if p.get("is_attention"))
-    complete = sum(1 for p in people if p.get("completion_state") == "complete")
-    incomplete = sum(1 for p in people if p.get("completion_state") == "incomplete")
-    absent = sum(1 for p in people if p.get("completion_state") == "absent")
-    no_remark = sum(1 for p in people if "no remark" in (p.get("progress", {}).get("flags") or []))
+    operational_people = [p for p in people if not O.is_operational_lead(p)]
+    operational_count = len(operational_people)
+    target = sum(1 for p in operational_people if (p.get("assigned_target") or "").strip())
+    trinity = sum(1 for p in operational_people if p.get("has_trinity"))
+    manual = sum(1 for p in operational_people if p.get("has_manual"))
+    attention = sum(1 for p in operational_people if p.get("is_attention"))
+    complete = sum(1 for p in operational_people if p.get("completion_state") == "complete")
+    incomplete = sum(1 for p in operational_people if p.get("completion_state") == "incomplete")
+    absent = sum(1 for p in operational_people if p.get("completion_state") == "absent")
+    no_remark = sum(1 for p in operational_people if "no remark" in (p.get("progress", {}).get("flags") or []))
     return {
         "headcount": n,
-        "target_coverage": {"num": target, "den": n, "pct": D.pct(target, n)},
-        "trinity_coverage": {"num": trinity, "den": n, "pct": D.pct(trinity, n)},
-        "manual_coverage": {"num": manual, "den": n, "pct": D.pct(manual, n)},
+        "target_coverage": {"num": target, "den": operational_count, "pct": D.pct(target, operational_count)},
+        "trinity_coverage": {"num": trinity, "den": operational_count, "pct": D.pct(trinity, operational_count)},
+        "manual_coverage": {"num": manual, "den": operational_count, "pct": D.pct(manual, operational_count)},
         "attention": attention,
         "no_remark": no_remark,
         "completion": {"complete": complete, "incomplete": incomplete, "absent": absent,
-                       "pct": D.pct(complete, n - absent) if (n - absent) else None},
+                       "pct": D.pct(complete, operational_count - absent) if (operational_count - absent) else None},
         "role_mix": count_by(people, "role"),
         "employment_mix": count_by(people, "employment"),
         "project_mix": count_by(people, "project_name"),
-        "workstream_mix": count_by(people, "workstream_label"),
-        "status_distribution": status_distribution(people),
+        "workstream_mix": count_by(operational_people, "workstream_label"),
+        "status_distribution": status_distribution(operational_people),
     }
 
 
@@ -441,7 +484,9 @@ async def _people_and_snap(date):
 
 @api.get("/meta")
 async def meta(user: dict = Depends(get_current_user)):
-    dates = await db.snapshots.distinct("reporting_date")
+    snapshot_dates = await db.snapshots.distinct("reporting_date")
+    backup_dates = await db.csv_backups.distinct("backup_date")
+    date_options = reporting_date_options(snapshot_dates, backup_dates)
     snap = await latest_snapshot()
     tpms = pods = roles = projects = employments = statuses = []
     if snap:
@@ -453,61 +498,54 @@ async def meta(user: dict = Depends(get_current_user)):
         employments = sorted({p["employment"] for p in people if p.get("employment")})
         statuses = sorted({t for p in people for t in p.get("status_tokens", [])})
     return {
-        "dates": sorted(dates, reverse=True),
+        "dates": [option["date"] for option in date_options],
+        "date_options": date_options,
         "latest_date": snap["reporting_date"] if snap else None,
         "options": {"tpms": tpms, "pods": pods, "roles": roles, "projects": projects,
                     "employments": employments, "statuses": statuses},
     }
 
 
-def _primary_bucket(ws, raw):
-    if "trinity" in ws:
-        return "trinity"
-    if "manual_dataset" in ws or "trajectory" in ws:
-        return "manual"
-    if "harness" in ws or "generation_kit" in ws:
-        return "harness"
-    if "manual_qc" in ws:
-        return "manual_qc"
-    if "leave" in raw:
-        return "leave"
-    return "other"
-
-
 def _ws_counts(people):
     trinity = manual = harness = manual_qc = on_leave = 0
-    t_target = m_target = m_completed = 0
-    has_m_completed = False
+    t_target = trinity_staged = trinity_completed = m_target = bundles_created = tasks_qced = 0
     for p in people:
+        if O.is_operational_lead(p):
+            continue
         ws = p.get("progress", {}).get("workstreams", [])
         raw = (p.get("tasking_status") or "").lower()
         at = D.to_int(p.get("assigned_target"))
-        qc = D.to_int(p.get("tasks_qced"))
-        bucket = _primary_bucket(ws, raw)
-        if bucket == "trinity":
-            trinity += 1
-            if at:
-                t_target += at
-        elif bucket == "manual":
-            manual += 1
-            if at:
-                m_target += at
-            if qc is not None:
-                m_completed += qc
-                has_m_completed = True
-        elif bucket == "harness":
-            harness += 1
-        elif bucket == "manual_qc":
-            manual_qc += 1
-        elif bucket == "leave":
-            on_leave += 1
+        is_trinity = O.matches_operation(p, "trinity")
+        is_manual = O.matches_operation(p, "manual")
+        is_leave = "leave" in raw
+        trinity += int(is_trinity)
+        manual += int(is_manual)
+        harness += int(O.matches_operation(p, "harness"))
+        manual_qc += int("manual qc" in raw or "manual_qc" in ws)
+        on_leave += int("leave" in raw)
+        if at and is_trinity and not is_leave:
+            t_target += at
+        if is_trinity and not is_leave:
+            trinity_staged += D.to_int(p.get("tasks_created_after_forge")) or 0
+            trinity_completed += D.to_int(p.get("tasks_approved_after_crucible")) or 0
+        if at and is_manual and not is_leave:
+            m_target += at
+        if is_manual and not is_leave:
+            bundles_created += D.to_int(p.get("input_bundles_created")) or 0
+            tasks_qced += D.to_int(p.get("tasks_qced")) or 0
     denom = t_target + m_target
-    overall = D.pct(m_completed, denom) if denom else None
+    overall = D.pct(trinity_completed + bundles_created + tasks_qced, denom) if denom else 0
     return {
         "members": len(people), "trinity": trinity, "manual": manual, "harness": harness,
         "manual_qc": manual_qc, "on_leave": on_leave,
-        "trinity_target": t_target, "trinity_completed": None,
-        "manual_target": m_target, "manual_completed": m_completed if has_m_completed else None,
+        "trinity_target": t_target,
+        "trinity_staged": trinity_staged,
+        "trinity_staged_pct": D.pct(trinity_staged, t_target) if t_target else 0,
+        "trinity_completed": trinity_completed,
+        "trinity_completed_pct": D.pct(trinity_completed, t_target) if t_target else 0,
+        "manual_target": m_target, "manual_staged": bundles_created,
+        "bundles_created": bundles_created,
+        "tasks_qced": tasks_qced,
         "overall_pct": overall,
     }
 
@@ -555,11 +593,43 @@ async def summary(user: dict = Depends(get_current_user), date: str = Query(None
         "harness": tot["harness"],
         "manual_qc": tot["manual_qc"],
         "on_leave": tot["on_leave"],
-        "trinity_shipped_pct": D.pct(0, tot["trinity_target"]) if tot["trinity_target"] else None,
-        "manual_completed": tot["manual_completed"] or 0,
+        "trinity_target": tot["trinity_target"],
+        "trinity_staged": tot["trinity_staged"],
+        "trinity_staged_pct": tot["trinity_staged_pct"],
+        "trinity_completed": tot["trinity_completed"],
+        "trinity_completed_pct": tot["trinity_completed_pct"],
+        "manual_target": tot["manual_target"],
+        "manual_staged": tot["manual_staged"],
+        "bundles_created": tot["bundles_created"],
+        "tasks_qced": tot["tasks_qced"],
         "overall_pct": tot["overall_pct"],
     }
-    return {"reporting_date": snap["reporting_date"], "kpis": kpis, "pods": rows}
+    return {"reporting_date": snap["reporting_date"], "source": snap.get("source", "snapshot"),
+            "backup_trigger": snap.get("backup_trigger"),
+            "backup_created_at": snap.get("backup_created_at"),
+            "backup_policy": "04:00 IST for the previous reporting day",
+            "kpis": kpis, "pods": rows}
+
+
+@api.get("/delivery")
+async def delivery_dashboard(
+    user: dict = Depends(get_current_user),
+    date_from: str = Query(None), date_to: str = Query(None),
+    project: str = Query(None), category: str = Query(None), task_type: str = Query(None),
+    pod_lead: str = Query(None), quality_lead: str = Query(None), tpm: str = Query(None),
+    author: str = Query(None), feedback: str = Query(None), client: str = Query(None),
+    search: str = Query(None),
+):
+    raw = await adapter.read_deliveries()
+    if raw.get("formula_error"):
+        raise HTTPException(status_code=503, detail="Formula error detected in Deliveries sheet")
+    tasks = DL.parse_delivery_rows(raw.get("values", []))
+    filters = parse_filters(
+        date_from=date_from, date_to=date_to, project=project, category=category,
+        task_type=task_type, pod_lead=pod_lead, quality_lead=quality_lead, tpm=tpm,
+        author=author, feedback=feedback, client=client, search=search,
+    )
+    return DL.build_delivery_dashboard(tasks, filters)
 
 
 
@@ -578,6 +648,7 @@ async def overview(user: dict = Depends(get_current_user), date: str = Query(Non
                       attention=(attention == "true") or None, completeness=completeness)
     fp = filter_people(people, q)
     metrics = compute_metrics(fp)
+    operations = O.build_operations_snapshot(fp)
 
     # TPM / POD hierarchy summary
     tpm_summary, pod_summary = {}, {}
@@ -604,24 +675,34 @@ async def overview(user: dict = Depends(get_current_user), date: str = Query(Non
             insights.append({"kind": "low-coverage",
                              "text": f"Low {label} coverage: {c['pct']}% ({c['num']}/{c['den']})",
                              "url": f"/users?completeness=&{cov_key}=missing"})
-    if metrics["attention"]:
-        insights.append({"kind": "attention",
-                         "text": f"{metrics['attention']} people flagged for attention (no Trinity/Manual data recorded).",
-                         "url": "/users?attention=true"})
-
     return {
         "reporting_date": snap["reporting_date"], "revision": snap["revision"],
         "is_baseline": snap.get("is_baseline", False),
         "change_summary": snap.get("change_summary", {}),
-        "metrics": metrics, "hierarchy": hierarchy, "insights": insights,
+        "metrics": metrics, "operations": operations,
+        "hierarchy": hierarchy, "insights": insights,
     }
 
 
 @api.get("/tpms")
-async def tpms(user: dict = Depends(get_current_user), date: str = Query(None)):
+async def tpms(user: dict = Depends(get_current_user), date: str = Query(None),
+               tpm: str = Query(None), pod: str = Query(None), role: str = Query(None),
+               employment: str = Query(None), project: str = Query(None),
+               status: str = Query(None), search: str = Query(None),
+               attention: str = Query(None), completeness: str = Query(None)):
     snap, people = await _people_and_snap(date)
     if not snap:
         return {"tpms": []}
+    filters = parse_filters(tpm=tpm, pod=pod, role=role, employment=employment,
+                            project=project, status=status,
+                            attention=(attention == "true") or None,
+                            completeness=completeness)
+    people = filter_people(people, filters)
+    if search:
+        term = search.strip().lower()
+        people = [p for p in people if term in (p.get("tpm") or "").lower()
+                  or term in (p.get("name") or "").lower()
+                  or term in (p.get("email") or "").lower()]
     groups = {}
     for p in people:
         groups.setdefault(p["tpm"] or "Unknown", []).append(p)
@@ -832,9 +913,11 @@ def _area_row(key, label, members, phase_f, disp_f, run_f):
 
 
 def compute_phase_summary(members):
-    trinity_people = [p for p in members if p.get("has_trinity")]
-    manual_people = [p for p in members if p.get("has_manual")]
-    rows = [_area_row(k, l, members, pf, df, rf) for k, l, pf, df, rf in TRINITY_AREAS]
+    operational_members = [p for p in members if not O.is_operational_lead(p)]
+    active_members = [p for p in operational_members if "leave" not in (p.get("tasking_status") or "").lower()]
+    trinity_people = [p for p in active_members if O.matches_operation(p, "trinity")]
+    manual_people = [p for p in active_members if O.matches_operation(p, "manual")]
+    rows = [_area_row(k, l, active_members, pf, df, rf) for k, l, pf, df, rf in TRINITY_AREAS]
     total_row = {
         "area": "Total", "key": "total",
         "total": sum(r["total"] for r in rows),
@@ -842,10 +925,13 @@ def compute_phase_summary(members):
         "buckets": {b: sum(r["buckets"][b] for r in rows) for b in PHASE_BUCKETS},
     }
     runs_summary = {"engram": rows[0]["total"], "forge": rows[1]["total"], "crucible": rows[2]["total"]}
+    trinity_assigned = sum(D.to_int(p.get("assigned_target")) or 0 for p in trinity_people if "leave" not in (p.get("tasking_status") or "").lower())
+    trinity_staged = sum(D.to_int(p.get("tasks_created_after_forge")) or 0 for p in trinity_people if "leave" not in (p.get("tasking_status") or "").lower())
+    trinity_completed = sum(D.to_int(p.get("tasks_approved_after_crucible")) or 0 for p in trinity_people if "leave" not in (p.get("tasking_status") or "").lower())
 
     # Per-person area classification for cell drilldown.
     detail = []
-    for p in members:
+    for p in active_members:
         areas = {}
         for k, _l, pf, df, _rf in TRINITY_AREAS:
             b = _classify(p.get(pf), p.get(df))
@@ -856,20 +942,22 @@ def compute_phase_summary(members):
             detail.append({"email": p["email"], "name": p.get("name", ""),
                            "role": p.get("role", ""), "areas": areas})
 
-    def si(k):
-        return sum(D.to_int(p.get(k)) or 0 for p in members)
-
     manual = {
         "people": len(manual_people),
-        "assigned": si("assigned_target"),
-        "bundles_created": si("input_bundles_created"),
-        "bundles_approved": si("input_bundles_approved"),
-        "trajectory": si("trajectory_generated"),
-        "qced": si("tasks_qced"),
+        "assigned": sum(D.to_int(p.get("assigned_target")) or 0 for p in manual_people),
+        "bundles_created": sum(D.to_int(p.get("input_bundles_created")) or 0 for p in manual_people),
+        "bundles_approved": sum(D.to_int(p.get("input_bundles_approved")) or 0 for p in manual_people),
+        "trajectory": sum(D.to_int(p.get("trajectory_generated")) or 0 for p in manual_people),
+        "qced": sum(D.to_int(p.get("tasks_qced")) or 0 for p in manual_people),
     }
     return {
         "statuses": PHASE_BUCKETS,
-        "trinity": {"people": len(trinity_people), "rows": rows, "total_row": total_row,
+        "trinity": {"people": len(trinity_people), "assigned": trinity_assigned,
+                    "staged": trinity_staged,
+                    "staged_pct": D.pct(trinity_staged, trinity_assigned) if trinity_assigned else 0,
+                    "completed": trinity_completed,
+                    "completed_pct": D.pct(trinity_completed, trinity_assigned) if trinity_assigned else 0,
+                    "rows": rows, "total_row": total_row,
                     "runs_summary": runs_summary, "detail": detail},
         "manual": manual,
     }
@@ -878,7 +966,7 @@ def compute_phase_summary(members):
 def _pod_overview_insight(name, members, m):
     n = len(members)
     ws_counts = {}
-    for p in members:
+    for p in (member for member in members if not O.is_operational_lead(member)):
         for w in p.get("progress", {}).get("workstreams", []):
             ws_counts[w] = ws_counts.get(w, 0) + 1
     top = sorted(ws_counts.items(), key=lambda x: -x[1])
@@ -897,13 +985,15 @@ async def users(user: dict = Depends(get_current_user), date: str = Query(None),
                 employment: str = Query(None), project: str = Query(None),
                 status: str = Query(None), search: str = Query(None),
                 attention: str = Query(None), completeness: str = Query(None),
+                operation: O.OperationFilter | None = Query(None),
                 limit: int = Query(500), offset: int = Query(0)):
     snap, people = await _people_and_snap(date)
     if not snap:
         return {"users": [], "total": 0}
     q = parse_filters(tpm=tpm, pod=pod, role=role, employment=employment, project=project,
                       status=status, search=search,
-                      attention=(attention == "true") or None, completeness=completeness)
+                      attention=(attention == "true") or None, completeness=completeness,
+                      operation=operation)
     fp = filter_people(people, q)
     fp.sort(key=lambda p: p.get("email", ""))
     total = len(fp)
@@ -940,7 +1030,7 @@ async def user_detail(email: str, user: dict = Depends(get_current_user)):
 @api.get("/audit")
 async def audit(user: dict = Depends(get_current_user), date: str = Query(None),
                 pod: str = Query(None), tpm: str = Query(None), classification: str = Query(None),
-                group: str = Query(None), search: str = Query(None),
+                group: str = Query(None), field: str = Query(None), search: str = Query(None),
                 limit: int = Query(500), offset: int = Query(0)):
     query = {}
     if date:
@@ -953,18 +1043,27 @@ async def audit(user: dict = Depends(get_current_user), date: str = Query(None),
         query["classification"] = classification
     if group and group != "all":
         query["group"] = group
-    cur = db.change_events.find(query, {"_id": 0}).sort("detected_at", -1)
-    events = await cur.to_list(5000)
+    if field:
+        query["field"] = field
     if search:
-        s = search.strip().lower()
-        events = [e for e in events if s in e.get("name", "").lower() or s in e.get("email", "").lower()]
-    total = len(events)
-    page = events[offset:offset + limit]
+        pattern = re.escape(search.strip())
+        query["$or"] = [
+            {"name": {"$regex": pattern, "$options": "i"}},
+            {"email": {"$regex": pattern, "$options": "i"}},
+        ]
+    total = await db.change_events.count_documents(query)
+    cur = db.change_events.find(query, {"_id": 0}).sort("detected_at", -1).skip(offset).limit(limit)
+    page = await cur.to_list(length=limit)
+    grouped = await db.change_events.aggregate([
+        {"$match": query},
+        {"$group": {"_id": "$classification", "count": {"$sum": 1}}},
+    ]).to_list(length=10)
+    counts = {row["_id"]: row["count"] for row in grouped}
     summary = {
-        "added": sum(1 for e in events if e["classification"] == "added"),
-        "removed": sum(1 for e in events if e["classification"] == "removed"),
-        "semantic": sum(1 for e in events if e["classification"] == "semantic"),
-        "raw_only": sum(1 for e in events if e["classification"] == "raw-only"),
+        "added": counts.get("added", 0),
+        "removed": counts.get("removed", 0),
+        "semantic": counts.get("semantic", 0),
+        "raw_only": counts.get("raw-only", 0),
     }
     return {"total": total, "summary": summary, "events": page}
 
@@ -1022,45 +1121,90 @@ def _rows_to_csv(values: list[list[str]]) -> str:
     return buf.getvalue()
 
 
-async def backup_now(trigger: str = "scheduled") -> dict:
-    today = datetime.now(IST).strftime("%Y-%m-%d")
+def latest_due_backup_date(now: datetime | None = None) -> str:
+    current = (now or datetime.now(IST)).astimezone(IST)
+    latest_run = current.replace(hour=BACKUP_HOUR_IST, minute=0, second=0, microsecond=0)
+    if current < latest_run:
+        latest_run -= timedelta(days=1)
+    return (latest_run.date() - timedelta(days=1)).isoformat()
+
+
+def next_backup_at(now: datetime | None = None) -> datetime:
+    current = (now or datetime.now(IST)).astimezone(IST)
+    next_run = current.replace(hour=BACKUP_HOUR_IST, minute=0, second=0, microsecond=0)
+    if next_run <= current:
+        next_run += timedelta(days=1)
+    return next_run
+
+
+def _snapshot_csv_values(snapshot: dict) -> list[list[str]]:
+    values = [[""] * len(D.COLUMNS), D.HEADER_LABELS]
+    values.extend([[person.get(key, "") for key in D.FIELD_KEYS] for person in snapshot["people"]])
+    return values
+
+
+async def backup_now(trigger: str = "scheduled", backup_date: str | None = None) -> dict:
+    target_date = backup_date
+    raw = None
     try:
         raw = await adapter.read_master()
     except Exception as exc:
-        logger.error("CSV backup read failed: %s", exc)
-        return {"status": "failed", "reason": str(exc)}
-    values = raw.get("values", [])
+        logger.error("CSV backup sheet read failed: %s", exc)
+
+    values = raw.get("values", []) if raw else []
+    parsed = D.parse_rows(values)
+    sheet_date = parsed.get("reporting_date")
+    if not target_date:
+        target_date = sheet_date or datetime.now(IST).strftime("%Y-%m-%d")
+
+    source = "sheet"
+    if not values or sheet_date != target_date:
+        snapshot = await db.snapshots.find_one(
+            {"reporting_date": target_date}, sort=[("revision", -1)]
+        )
+        if not snapshot:
+            reason = f"No sheet or snapshot data available for reporting date {target_date}"
+            logger.error("CSV backup failed: %s", reason)
+            return {"status": "failed", "backup_date": target_date, "reason": reason}
+        values = _snapshot_csv_values(snapshot)
+        source = "snapshot"
+
     csv_text = _rows_to_csv(values)
     doc = {
-        "backup_date": today, "created_at": D.now_iso(), "trigger": trigger,
-        "workbook_title": raw.get("title"), "row_count": max(len(values) - 2, 0),
-        "size_bytes": len(csv_text.encode()), "csv": csv_text,
+        "backup_date": target_date, "reporting_date": target_date,
+        "created_at": D.now_iso(), "trigger": trigger, "source": source,
+        "sheet_reporting_date": sheet_date,
+        "workbook_title": raw.get("title") if raw else None,
+        "row_count": max(len(values) - 2, 0), "size_bytes": len(csv_text.encode()),
+        "csv": csv_text,
     }
-    await db.csv_backups.update_one({"backup_date": today}, {"$set": doc}, upsert=True)
-    logger.info("CSV backup stored for %s (%d rows)", today, doc["row_count"])
-    return {"status": "ok", "backup_date": today, "row_count": doc["row_count"],
-            "size_bytes": doc["size_bytes"]}
+    await db.csv_backups.update_one({"backup_date": target_date}, {"$set": doc}, upsert=True)
+    logger.info("CSV backup stored for reporting date %s from %s (%d rows)",
+                target_date, source, doc["row_count"])
+    return {"status": "ok", "backup_date": target_date, "row_count": doc["row_count"],
+            "size_bytes": doc["size_bytes"], "source": source}
 
 
 async def backup_scheduler():
     await asyncio.sleep(5)
-    # Ensure today's backup exists on boot.
-    today = datetime.now(IST).strftime("%Y-%m-%d")
-    if not await db.csv_backups.find_one({"backup_date": today}):
-        await backup_now("startup")
+    due_date = latest_due_backup_date()
+    if not await db.csv_backups.find_one({"backup_date": due_date}):
+        await backup_now("startup-catchup", due_date)
     while True:
         now = datetime.now(IST)
-        nxt = now.replace(hour=BACKUP_HOUR_IST, minute=0, second=0, microsecond=0)
-        if nxt <= now:
-            nxt += timedelta(days=1)
+        nxt = next_backup_at(now)
         await asyncio.sleep((nxt - now).total_seconds())
-        await backup_now("scheduled")
+        try:
+            await backup_now("scheduled", latest_due_backup_date(datetime.now(IST)))
+        except Exception as exc:
+            logger.error("Scheduled CSV backup failed: %s", exc)
 
 
 @api.get("/backups")
 async def list_backups(user: dict = Depends(get_current_user)):
     docs = await db.csv_backups.find({}, {"_id": 0, "csv": 0}).sort("backup_date", -1).to_list(400)
-    return {"backups": docs, "backup_hour_ist": BACKUP_HOUR_IST}
+    return {"backups": docs, "backup_hour_ist": BACKUP_HOUR_IST,
+            "policy": "Previous reporting day", "timezone": "Asia/Kolkata"}
 
 
 @api.get("/backups/{backup_date}/download")
@@ -1111,10 +1255,13 @@ async def startup():
     await db.change_events.create_index([("email", 1)])
     await db.change_events.create_index([("pod", 1), ("reporting_date", 1)])
     await db.sync_runs.create_index([("started_at", -1)])
+    await db.csv_backups.create_index("backup_date", unique=True)
+    await db.daily_progress.create_index("record_key", unique=True)
+    inserted = await seed_historical(db, ROOT_DIR / "data" / "daily_progress_historical.json")
     await seed_users()
     asyncio.create_task(poller())
     asyncio.create_task(backup_scheduler())
-    logger.info("Startup complete; poller + daily backup scheduled.")
+    logger.info("Startup complete; poller + daily backup scheduled; %s historical progress rows seeded.", inserted)
 
 
 @app.on_event("shutdown")
@@ -1123,6 +1270,7 @@ async def shutdown():
 
 
 app.include_router(api)
+app.include_router(create_daily_progress_router(db, adapter, get_current_user, require_admin))
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

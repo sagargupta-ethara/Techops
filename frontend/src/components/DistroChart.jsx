@@ -6,9 +6,9 @@ import { Table2, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PALETTE = [
-  "hsl(217, 91%, 60%)", "hsl(160, 84%, 39%)", "hsl(38, 92%, 50%)",
-  "hsl(340, 82%, 52%)", "hsl(271, 91%, 65%)", "hsl(189, 94%, 43%)",
-  "hsl(20, 90%, 55%)", "hsl(140, 60%, 45%)", "hsl(300, 70%, 55%)", "hsl(48, 95%, 50%)",
+  "hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))", "hsl(var(--chart-5))", "hsl(var(--chart-6))",
+  "hsl(var(--chart-7))", "hsl(var(--chart-8))", "hsl(var(--chart-9))", "hsl(var(--chart-10))",
 ];
 
 function ChartTooltip({ active, payload }) {
@@ -21,15 +21,22 @@ function ChartTooltip({ active, payload }) {
   );
 }
 
+function AxisTick({ x, y, payload }) {
+  const label = String(payload.value || "");
+  const compact = label.length > 18 ? `${label.slice(0, 17)}…` : label;
+  return <text x={x - 8} y={y} dy={4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize={11}>{compact}</text>;
+}
+
 export default function DistroChart({ title, data, type = "bar", testid }) {
   const [view, setView] = useState("chart");
   const rows = (data || []).map((d, i) => ({ ...d, fill: PALETTE[i % PALETTE.length] }));
   const total = rows.reduce((a, b) => a + b.count, 0);
+  const chartRows = rows.slice(0, 10);
 
   return (
-    <div data-testid={testid} className="card-lift flex h-full flex-col rounded-xl border border-border bg-card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-heading text-[13px] font-bold uppercase tracking-wider text-foreground/70">
+    <div data-testid={testid} className="panel flex h-[360px] min-h-0 flex-col">
+      <div className="panel-header">
+        <h3 className="panel-title">
           {title}
         </h3>
         <Button
@@ -47,14 +54,14 @@ export default function DistroChart({ title, data, type = "bar", testid }) {
       {rows.length === 0 ? (
         <div className="flex flex-1 items-center justify-center py-10 text-sm text-muted-foreground">No data</div>
       ) : view === "table" ? (
-        <div className="thin-scroll max-h-[280px] flex-1 overflow-y-auto">
+        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <table className="w-full text-sm">
             <caption className="sr-only">{title} distribution</caption>
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="py-1.5 font-medium">Label</th>
-                <th className="py-1.5 text-right font-medium">Count</th>
-                <th className="py-1.5 text-right font-medium">Share</th>
+                <th className="py-1.5 text-center font-medium">Count</th>
+                <th className="py-1.5 text-center font-medium">Share</th>
               </tr>
             </thead>
             <tbody>
@@ -64,8 +71,8 @@ export default function DistroChart({ title, data, type = "bar", testid }) {
                     <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: r.fill }} />
                     {r.label}
                   </td>
-                  <td className="py-1.5 text-right font-mono">{r.count}</td>
-                  <td className="py-1.5 text-right font-mono text-muted-foreground">
+                  <td className="py-1.5 text-center font-mono">{r.count}</td>
+                  <td className="py-1.5 text-center font-mono text-muted-foreground">
                     {total ? Math.round((1000 * r.count) / total) / 10 : 0}%
                   </td>
                 </tr>
@@ -74,12 +81,12 @@ export default function DistroChart({ title, data, type = "bar", testid }) {
           </table>
         </div>
       ) : type === "pie" ? (
-        <div className="flex flex-1 items-center gap-5">
-          <div className="relative h-[200px] w-[200px] shrink-0">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 pb-4 sm:flex-row sm:gap-5">
+          <div className="relative h-[180px] w-[180px] shrink-0">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={rows} dataKey="count" nameKey="label" innerRadius={58} outerRadius={90}
-                     paddingAngle={2} stroke="none">
+                     paddingAngle={2} stroke="none" isAnimationActive={false}>
                   {rows.map((r, i) => <Cell key={i} fill={r.fill} />)}
                 </Pie>
                 <Tooltip content={<ChartTooltip />} />
@@ -104,19 +111,22 @@ export default function DistroChart({ title, data, type = "bar", testid }) {
           </ul>
         </div>
       ) : (
-        <div className="flex-1">
-          <ResponsiveContainer width="100%" height={Math.max(180, rows.length * 32)}>
-            <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={6}>
+        <div className="min-h-0 flex-1 px-2 pb-3">
+          <div className="h-[260px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartRows} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={5}>
               <CartesianGrid horizontal={false} stroke="hsl(var(--border))" strokeDasharray="3 3" />
               <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="label" width={116}
-                     tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="label" width={128}
+                     tick={<AxisTick />} interval={0} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: "hsl(var(--accent) / 0.5)" }} content={<ChartTooltip />} />
-              <Bar dataKey="count" radius={[0, 5, 5, 0]} maxBarSize={22}>
-                {rows.map((r, i) => <Cell key={i} fill={r.fill} />)}
+              <Bar dataKey="count" radius={[0, 5, 5, 0]} maxBarSize={22} isAnimationActive={false}>
+                {chartRows.map((r, i) => <Cell key={i} fill={r.fill} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          </div>
+          {rows.length > chartRows.length && <p className="-mt-1 text-center text-[11px] text-muted-foreground">Top {chartRows.length} shown · switch to Table for all {rows.length}</p>}
         </div>
       )}
     </div>

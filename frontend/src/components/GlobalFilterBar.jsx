@@ -9,6 +9,15 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 
+const CHIP_LABELS = { operation: "View" };
+const CHIP_VALUES = {
+  trinity: "Trinity assigned",
+  manual: "Manual assigned",
+  harness: "Harness assigned",
+  trinity_in_progress: "Trinity in progress",
+  manual_in_progress: "Manual in progress",
+};
+
 function FSelect({ label, k, value, options, onChange, testid }) {
   return (
     <Select value={value || "all"} onValueChange={(v) => onChange(k, v)}>
@@ -61,15 +70,6 @@ export default function GlobalFilterBar() {
           <FSelect label="Completeness" k="completeness" value={filters.completeness}
                    options={["complete", "incomplete", "absent"]} onChange={setFilter}
                    testid="filter-completeness" />
-          <Button
-            variant={filters.attention === "true" ? "default" : "outline"}
-            size="sm"
-            data-testid="filter-attention"
-            onClick={() => setFilter("attention", filters.attention === "true" ? "" : "true")}
-            className="h-9 shrink-0 text-xs"
-          >
-            Attention only
-          </Button>
         </div>
 
         {activeChips.length > 0 && (
@@ -77,7 +77,7 @@ export default function GlobalFilterBar() {
             {activeChips.map(([k, v]) => (
               <Badge key={k} variant="secondary" data-testid={`chip-${k}`}
                      className="gap-1 font-normal">
-                <span className="text-muted-foreground">{k}:</span> {v}
+                <span className="text-muted-foreground">{CHIP_LABELS[k] || k}:</span> {CHIP_VALUES[v] || v}
                 <button onClick={() => setFilter(k, "")} aria-label={`Remove ${k} filter`}
                         className="ml-0.5 rounded-full hover:text-foreground">
                   <X className="h-3 w-3" />

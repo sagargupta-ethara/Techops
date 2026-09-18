@@ -12,6 +12,8 @@ import Users from "@/pages/Users";
 import UserDetail from "@/pages/UserDetail";
 import Audit from "@/pages/Audit";
 import DataHealth from "@/pages/DataHealth";
+import Delivery from "@/pages/Delivery";
+import DailyProgress from "@/pages/DailyProgress";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -37,6 +39,8 @@ function App() {
           <Route path="/tpms/:name" element={<Protected><TpmDetail /></Protected>} />
           <Route path="/pods" element={<Protected><Pods /></Protected>} />
           <Route path="/pods/:name" element={<Protected><PodDetail /></Protected>} />
+          <Route path="/delivery" element={<Protected><Delivery /></Protected>} />
+          <Route path="/daily-progress" element={<Protected><DailyProgress /></Protected>} />
           <Route path="/users" element={<Protected><Users /></Protected>} />
           <Route path="/users/:email" element={<Protected><UserDetail /></Protected>} />
           <Route path="/audit" element={<Protected><Audit /></Protected>} />

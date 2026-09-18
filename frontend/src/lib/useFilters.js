@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router-dom";
 
 export const FILTER_KEYS = [
   "date", "tpm", "pod", "role", "employment", "project", "status", "search",
-  "attention", "completeness",
+  "completeness", "operation",
 ];
 
 // URL-persisted global filter state.

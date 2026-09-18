@@ -1,8 +1,9 @@
 import axios from "axios";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL?.trim().replace(/\/+$/, "") || "";
+export const API_BASE_URL = `${BACKEND_URL}/api`;
 
-const api = axios.create({ baseURL: API });
+const api = axios.create({ baseURL: API_BASE_URL });
 
 api.interceptors.request.use((cfg) => {
   const token = localStorage.getItem("pod_token");

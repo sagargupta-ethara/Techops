@@ -2,8 +2,6 @@
 import json
 import os
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
 MODEL = ("anthropic", "claude-haiku-4-5-20251001")
 
 SYSTEM = (
@@ -41,6 +39,8 @@ def _entries(members):
 
 
 async def analyze_blockers(pod: str, members: list[dict], metrics: dict) -> dict:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
     key = os.environ["EMERGENT_LLM_KEY"]
     comp = metrics.get("completion", {})
     overall = comp.get("pct")

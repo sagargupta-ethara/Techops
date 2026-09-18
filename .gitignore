@@ -87,6 +87,8 @@ android-sdk/
 .env.*
 *.env
 credentials.json
+backend/google-service-account.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/0.pack
+.omo/

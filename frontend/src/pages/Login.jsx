@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { Radio } from "lucide-react";
+import { Radio, Activity, GitCompareArrows, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,36 +38,43 @@ export default function Login() {
   };
 
   return (
-    <div className="grid min-h-screen grid-cols-1 bg-background lg:grid-cols-2">
-      <div className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-card p-12 lg:flex">
-        <div className="grid-backdrop absolute inset-0 opacity-40" />
+    <div className="grid min-h-screen grid-cols-1 bg-background lg:grid-cols-[1.15fr_.85fr]">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-[hsl(var(--hero))] p-12 text-white lg:flex xl:p-16">
+        <div className="grid-backdrop absolute inset-0 opacity-10" />
+        <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-teal-300/10 blur-3xl" />
         <div className="relative flex items-center gap-2">
-          <Radio className="h-6 w-6 text-primary" />
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-300/15 ring-1 ring-teal-300/20"><Radio className="h-5 w-5 text-teal-300" /></span>
           <span className="font-heading text-lg font-bold tracking-tight">POD OPS</span>
         </div>
         <div className="relative">
-          <h2 className="font-heading text-4xl font-extrabold leading-tight tracking-tight">
-            Live POD Operations<br />Command Center
+          <div className="text-[11px] font-semibold uppercase tracking-[.18em] text-teal-300">Operations intelligence</div>
+          <h2 className="mt-4 max-w-xl font-heading text-5xl font-bold leading-[1.08] tracking-[-.04em]">
+            Turn tracker data into clear operating decisions.
           </h2>
-          <p className="mt-4 max-w-md text-sm text-muted-foreground">
-            Leadership-only view of the live Master tracker — TPM to POD to user, with daily
-            history and explainable detected changes. Synced every 60 seconds.
+          <p className="mt-5 max-w-lg text-base leading-7 text-slate-300">
+            See where work is moving, what needs attention, and how every POD contributes—without editing the source sheet.
           </p>
+          <div className="mt-8 grid max-w-xl grid-cols-3 gap-3">
+            <LoginFeature icon={Activity} label="Live pulse" />
+            <LoginFeature icon={GitCompareArrows} label="Change history" />
+            <LoginFeature icon={ShieldCheck} label="Read only" />
+          </div>
         </div>
-        <div className="relative text-xs font-mono uppercase tracking-wider text-muted-foreground">
-          Read-only · Never writes to the sheet
+        <div className="relative text-xs text-slate-400">
+          Synced from the Master tracker every 60 seconds
         </div>
       </div>
 
       <div className="flex items-center justify-center p-6">
-        <form onSubmit={submit} className="w-full max-w-sm space-y-5" data-testid="login-form">
+        <form onSubmit={submit} className="panel w-full max-w-md space-y-5 p-6 sm:p-8" data-testid="login-form">
           <div className="lg:hidden flex items-center gap-2">
             <Radio className="h-6 w-6 text-primary" />
             <span className="font-heading text-lg font-bold tracking-tight">POD OPS</span>
           </div>
           <div>
-            <h1 className="font-heading text-2xl font-bold tracking-tight">Sign in</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Leadership access only.</p>
+            <div className="text-[11px] font-semibold uppercase tracking-[.16em] text-primary">Secure workspace</div>
+            <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight">Welcome back</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Sign in to open the live command center.</p>
           </div>
           {error && (
             <div data-testid="login-error"
@@ -113,4 +120,8 @@ export default function Login() {
       </div>
     </div>
   );
+}
+
+function LoginFeature({ icon: Icon, label }) {
+  return <div className="rounded-xl border border-white/10 bg-white/[.05] p-3"><Icon className="h-4 w-4 text-teal-300" /><div className="mt-3 text-xs font-medium text-slate-300">{label}</div></div>;
 }

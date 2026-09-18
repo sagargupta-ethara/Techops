@@ -1,21 +1,32 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useFilters } from "@/lib/useFilters";
 import { PageContainer, PageHeader, CompletionBadge } from "@/components/Page";
 import GlobalFilterBar from "@/components/GlobalFilterBar";
-import StatusBadge from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cell } from "@/lib/format";
+import Pagination from "@/components/Pagination";
+
+const PAGE_SIZE = 25;
 
 export default function Users() {
   const { queryString } = useFilters();
   const qs = queryString();
+  const [page, setPage] = useState(0);
   const navigate = useNavigate();
+  useEffect(() => setPage(0), [qs]);
+  const pageQs = new URLSearchParams(qs);
+  pageQs.set("limit", PAGE_SIZE);
+  pageQs.set("offset", page * PAGE_SIZE);
   const { data, isLoading } = useQuery({
-    queryKey: ["users", qs],
-    queryFn: () => api.get(`/users?${qs}`).then((r) => r.data),
+    queryKey: ["users", qs, page],
+    queryFn: () => api.get(`/users?${pageQs}`).then((r) => r.data),
   });
+  useEffect(() => {
+    if (page > 0 && data && page * PAGE_SIZE >= data.total) setPage(Math.max(0, Math.ceil(data.total / PAGE_SIZE) - 1));
+  }, [data, page]);
 
   return (
     <>
@@ -25,6 +36,11 @@ export default function Users() {
           title="Users Directory"
           subtitle={data ? `${data.total} people match current filters` : "People keyed by canonical email"}
         />
+        {data && <div className="mb-5 grid gap-3 sm:grid-cols-3">
+          <DirectoryFact value={data.total} label="People in this view" detail="Updates with every active filter" />
+          <DirectoryFact value={Math.ceil(data.total / PAGE_SIZE)} label="Result pages" detail={`${PAGE_SIZE} focused records per page`} />
+          <DirectoryFact value={data.users?.filter((u) => u.completion_state !== "absent").length || 0} label="Active on this page" detail="Excludes people marked Leave" tone />
+        </div>}
         {isLoading ? (
           <Skeleton className="h-96 rounded-md" />
         ) : data?.users?.length === 0 ? (
@@ -32,8 +48,9 @@ export default function Users() {
             No people match the current filters.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-border bg-card thin-scroll">
-            <table className="w-full min-w-[820px] text-sm" data-testid="users-table">
+          <div className="panel">
+            <div className="overflow-x-auto thin-scroll">
+            <table className="data-table min-w-[820px]" data-testid="users-table">
               <caption className="sr-only">Users directory</caption>
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -43,7 +60,6 @@ export default function Users() {
                   <th className="px-4 py-2.5 font-medium">Project</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 font-medium">Complete</th>
-                  <th className="px-4 py-2.5 font-medium">Flag</th>
                 </tr>
               </thead>
               <tbody>
@@ -52,7 +68,7 @@ export default function Users() {
                       onClick={() => navigate(`/users/${encodeURIComponent(u.email)}`)}
                       className="cursor-pointer border-b border-border/60 hover:bg-accent">
                     <td className="px-4 py-2.5">
-                      <div className="font-medium">{u.name}</div>
+                      <Link to={`/users/${encodeURIComponent(u.email)}`} onClick={(event) => event.stopPropagation()} className="font-medium hover:text-primary hover:underline">{u.name}</Link>
                       <div className="font-mono text-[11px] text-muted-foreground">{u.email}</div>
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{u.pod || "No data"}</td>
@@ -69,14 +85,19 @@ export default function Users() {
                       </div>
                     </td>
                     <td className="px-4 py-2.5"><CompletionBadge state={u.completion_state} /></td>
-                    <td className="px-4 py-2.5">{u.is_attention && <StatusBadge state="attention" text="Attention" />}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            <Pagination page={page} pageSize={PAGE_SIZE} total={data?.total || 0} onPageChange={setPage} label="people" />
           </div>
         )}
       </PageContainer>
     </>
   );
+}
+
+function DirectoryFact({ value, label, detail, tone }) {
+  return <div className="panel flex items-center gap-4 p-4"><div className={`flex h-12 min-w-12 items-center justify-center rounded-xl font-heading text-xl font-bold ${tone ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'}`}>{value}</div><div><div className="text-sm font-semibold">{label}</div><div className="mt-0.5 text-xs text-muted-foreground">{detail}</div></div></div>;
 }

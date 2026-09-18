@@ -1,14 +1,19 @@
-export default function KpiStat({ label, value, sub, accent = false, testid, icon: Icon }) {
+import { Link } from "react-router-dom";
+
+export default function KpiStat({ label, value, sub, accent = false, testid, icon: Icon, to }) {
+  const compactValue = String(value ?? "").length >= 10;
+  const Component = to ? Link : "div";
   return (
-    <div
+    <Component
+      {...(to ? { to, "aria-label": `View people for ${label}` } : {})}
       data-testid={testid}
-      className="card-lift group relative overflow-hidden rounded-xl border border-border bg-card p-5"
+      className={`card-lift group relative min-h-[132px] overflow-hidden rounded-xl border border-border/80 bg-card p-4 shadow-sm sm:p-5 ${to ? "cursor-pointer hover:bg-primary/[.025]" : ""}`}
     >
       <span
-        className={`absolute inset-x-0 top-0 h-1 ${accent ? "bg-primary" : "bg-border"} transition-colors group-hover:bg-primary`}
+        className={`absolute bottom-0 left-0 top-0 w-1 ${accent ? "bg-primary" : "bg-border"}`}
       />
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-mono font-medium uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -17,10 +22,10 @@ export default function KpiStat({ label, value, sub, accent = false, testid, ico
           </span>
         )}
       </div>
-      <div className={`mt-3 font-mono text-3xl font-bold tabular tracking-tight ${accent ? "text-primary" : "text-foreground"}`}>
+      <div className={`mt-3 whitespace-nowrap font-heading font-bold tabular leading-none tracking-[-0.035em] ${compactValue ? "text-xl sm:text-2xl" : "text-[32px]"} ${accent ? "text-primary" : "text-foreground"}`}>
         {value}
       </div>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
-    </div>
+    </Component>
   );
 }

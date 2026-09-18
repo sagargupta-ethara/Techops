@@ -52,9 +52,9 @@ export function TrinityMatrix({ trinity, testid }) {
         <thead>
           <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-4 py-2.5 text-left font-medium">Area</th>
-            <th className="px-3 py-2.5 text-right font-medium">Total Runs</th>
+            <th className="px-3 py-2.5 text-center font-medium">Total Runs</th>
             {statuses.map((s) => (
-              <th key={s} className="px-3 py-2.5 text-right font-medium">{STATUS_LABELS[s]}</th>
+              <th key={s} className="px-3 py-2.5 text-center font-medium">{STATUS_LABELS[s]}</th>
             ))}
           </tr>
         </thead>
@@ -62,12 +62,12 @@ export function TrinityMatrix({ trinity, testid }) {
           {rows.map((r) => (
             <tr key={r.key} className={`border-b border-border/60 ${r.key === "total" ? "bg-muted/30 font-semibold" : ""}`}>
               <td className="px-4 py-2 font-medium">{r.area}</td>
-              <td className="px-3 py-2 text-right font-mono tabular">{r.total}</td>
+              <td className="px-3 py-2 text-center font-mono tabular">{r.total}</td>
               {statuses.map((s) => {
                 const v = r.buckets[s];
                 const areaKey = r.key === "total" ? "total" : r.key;
                 return (
-                  <td key={s} className="px-3 py-2 text-right font-mono tabular">
+                  <td key={s} className="px-3 py-2 text-center font-mono tabular">
                     {v ? (
                       <button
                         data-testid={`matrix-cell-${areaKey}-${s}`}
@@ -119,20 +119,15 @@ export function TrinityMatrix({ trinity, testid }) {
   );
 }
 
-export function ManualFunnel({ manual, testid }) {
-  const steps = [
-    ["Assigned", manual.assigned], ["Bundles Created", manual.bundles_created],
-    ["Bundles Approved", manual.bundles_approved], ["Trajectory Generated", manual.trajectory],
-    ["Tasks QCed", manual.qced],
-  ];
+function PipelineFunnel({ title, people, peopleLabel, steps, testid, barClass }) {
   const max = Math.max(...steps.map((s) => s[1]), 1);
   return (
-    <div className="rounded-md border border-border bg-card p-4" data-testid={testid}>
+    <section className="panel p-4 sm:p-5" data-testid={testid}>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Manual pipeline
+          {title}
         </h3>
-        <span className="text-xs text-muted-foreground">{manual.people} manual taskers</span>
+        <span className="text-xs text-muted-foreground"><strong className="font-mono text-foreground">{people}</strong> {peopleLabel}</span>
       </div>
       <div className="space-y-2.5">
         {steps.map(([l, v]) => (
@@ -142,11 +137,79 @@ export function ManualFunnel({ manual, testid }) {
               <span className="font-mono font-medium tabular">{v}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-secondary">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${(v / max) * 100}%` }} />
+              <div className={`h-full rounded-full ${barClass}`} style={{ width: `${(v / max) * 100}%` }} />
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </section>
+  );
+}
+
+export function TrinityFunnel({ trinity, testid }) {
+  const stages = [
+    {
+      label: "Staged after Forge",
+      value: trinity.staged ?? 0,
+      percentage: trinity.staged_pct ?? 0,
+      tone: "bg-cyan-600 dark:bg-cyan-500",
+      description: "Tasks created after Forge; still in progress until approved.",
+    },
+    {
+      label: "Completed after Crucible",
+      value: trinity.completed ?? 0,
+      percentage: trinity.completed_pct ?? 0,
+      tone: "bg-emerald-600 dark:bg-emerald-500",
+      description: "Tasks approved after Crucible; counted as completed.",
+    },
+  ];
+  return (
+    <section className="panel p-4 sm:p-5" data-testid={testid}>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[.14em] text-primary">Trinity task progress</div>
+          <h3 className="mt-1 font-heading text-lg font-bold">Forge to Crucible</h3>
+        </div>
+        <div className="text-right text-xs text-muted-foreground">
+          <strong className="block font-heading text-xl text-foreground">{trinity.assigned ?? 0}</strong>
+          assigned tasks · {trinity.people ?? 0} taskers
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {stages.map((stage) => (
+          <article key={stage.label} className="rounded-xl border border-border/70 bg-muted/35 p-4">
+            <div className="text-xs font-semibold text-muted-foreground">{stage.label}</div>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <strong className="font-heading text-3xl font-bold tabular tracking-tight">{stage.value}</strong>
+              <span className="font-mono text-sm font-semibold tabular text-foreground">{stage.percentage}%</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+              <div className={`h-full rounded-full ${stage.tone}`} style={{ width: `${Math.min(stage.percentage, 100)}%` }} />
+            </div>
+            <div className="mt-2 text-[11px] font-medium text-muted-foreground">{stage.percentage}% of assigned tasks</div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">{stage.description}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ManualFunnel({ manual, testid }) {
+  return (
+    <PipelineFunnel
+      title="Manual pipeline"
+      people={manual.people}
+      peopleLabel="manual taskers"
+      testid={testid}
+      barClass="bg-primary"
+      steps={[
+        ["Assigned", manual.assigned],
+        ["Manual Staged", manual.bundles_created],
+        ["Bundles Approved", manual.bundles_approved],
+        ["Trajectory Generated", manual.trajectory],
+        ["Tasks QCed", manual.qced],
+      ]}
+    />
   );
 }

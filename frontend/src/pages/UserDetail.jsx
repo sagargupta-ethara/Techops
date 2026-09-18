@@ -19,13 +19,15 @@ const GROUPS = {
   trinity: [
     ["tracking_md", "Tracking.MD"], ["engram_run_count", "ENGRAM Run Count"], ["engram_phase", "ENGRAM phase"],
     ["directive_disposition", "DIRECTIVE.md"], ["forge_phase", "FORGE phase"], ["forge_run_count", "FORGE Run Count"],
-    ["edict_disposition", "EDICT.md"], ["crucible_run_count", "CRUCIBLE Run Count"], ["crucible_phase", "CRUCIBLE phase"],
+    ["edict_disposition", "EDICT.md"], ["tasks_created_after_forge", "Staged after Forge"],
+    ["crucible_run_count", "CRUCIBLE Run Count"], ["crucible_phase", "CRUCIBLE phase"],
     ["verdict_disposition", "VERDICT.md"], ["completion_status", "Completion Status"],
-    ["tasks_completed", "Tasks Completed"], ["crucible_verdict", "Crucible Verdict"], ["remarks", "Remarks"],
+    ["tasks_approved_after_crucible", "Approved after Crucible"],
+    ["crucible_verdict", "Crucible Verdict"], ["remarks", "Remarks"],
   ],
   manual: [
-    ["input_bundles_created", "Input Bundles Created"], ["input_bundles_approved", "Bundles Approved"],
-    ["trajectory_generated", "Trajectory Generated"], ["tasks_qced", "Tasks QCed"], ["remark", "Remark"],
+    ["input_bundles_created", "Manual Staged"], ["input_bundles_approved", "Bundles Approved"],
+    ["trajectory_generated", "Trajectory Generated"], ["tasks_qced", "Tasks QCed"], ["remarks", "Remarks"],
   ],
 };
 
@@ -34,21 +36,34 @@ const CLS_MAP = {
   semantic: "text-primary", "raw-only": "text-muted-foreground",
 };
 
-function Field({ label, value }) {
+const ZERO_COUNT_FIELDS = new Set([
+  "assigned_target", "engram_run_count", "forge_run_count", "crucible_run_count",
+  "tasks_created_after_forge", "tasks_approved_after_crucible",
+  "input_bundles_created", "input_bundles_approved", "trajectory_generated", "tasks_qced",
+]);
+const WIDE_FIELDS = new Set(["tracking_md", "remarks"]);
+
+function Field({ label, value, zeroWhenEmpty = false, wide = false }) {
+  const empty = value == null || String(value).trim() === "";
   return (
-    <div className="flex justify-between gap-4 border-b border-border/50 py-1.5 text-sm">
+    <div className={`grid gap-1 border-b border-border/50 py-1.5 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:gap-4 ${wide ? "md:col-span-2" : ""}`}>
       <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium break-words">{cell(value)}</span>
+      <span className={`min-w-0 break-words font-medium [overflow-wrap:anywhere] ${wide ? "text-left" : "sm:text-right"}`}>
+        {zeroWhenEmpty && empty ? 0 : cell(value)}
+      </span>
     </div>
   );
 }
 
 function Section({ title, fields, person }) {
   return (
-    <div className="rounded-md border border-border bg-card p-4">
+    <div className="rounded-md border border-border bg-card p-4" data-testid={`section-${title.toLowerCase()}`}>
       <h3 className="mb-2 font-heading text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
-        {fields.map(([k, l]) => <Field key={k} label={l} value={person[k]} />)}
+      <div className="grid grid-cols-1 gap-x-12 md:grid-cols-2">
+        {fields.map(([k, l]) => (
+          <Field key={k} label={l} value={person[k]}
+                 zeroWhenEmpty={ZERO_COUNT_FIELDS.has(k)} wide={WIDE_FIELDS.has(k)} />
+        ))}
       </div>
     </div>
   );
@@ -75,10 +90,11 @@ export default function UserDetail() {
         <Skeleton className="h-96 rounded-md" />
       ) : (
         <>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="font-heading text-2xl font-extrabold tracking-tight">{cell(data.current.name)}</h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <section className="mb-5 rounded-2xl bg-[hsl(var(--hero))] p-6 text-white shadow-xl shadow-emerald-950/10">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div><div className="text-[11px] font-semibold uppercase tracking-[.16em] text-teal-300">People intelligence</div>
+              <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight">{cell(data.current.name)}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
                 <Mail className="h-3.5 w-3.5" /> <span className="font-mono">{data.email}</span>
                 <span>·</span> {cell(data.current.pod)} · {cell(data.current.role)}
               </div>
@@ -86,26 +102,24 @@ export default function UserDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <CompletionBadge state={data.current.completion_state} />
               {data.current.absent && <StatusBadge state="stale" text="Absent" />}
-              {data.current.is_attention && <StatusBadge state="attention" text="Attention" size="lg" />}
-              {data.current.progress?.flags?.includes("no remark") && <StatusBadge state="stale" text="No remark" />}
             </div>
           </div>
-
-          <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-4" data-testid="user-insight">
+          <div className="mt-5 border-t border-white/10 pt-4" data-testid="user-insight">
             <div className="flex items-start gap-2 text-sm">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
               <div>
                 <div className="font-medium">Working on: {data.current.workstream_label || "No workstream"}</div>
-                <div className="mt-0.5 text-muted-foreground">{data.current.progress?.insight || "No workstream data recorded."}</div>
+                <div className="mt-0.5 text-slate-300">{data.current.progress?.insight || "No workstream data recorded."}</div>
                 {data.last_changed_at && (
-                  <div className="mt-1 text-xs text-muted-foreground">Last detected change {fmtDate(data.last_changed_at)} · {data.change_count} total</div>
+                  <div className="mt-1 text-xs text-slate-400">Last detected change {fmtDate(data.last_changed_at)} · {data.change_count} total</div>
                 )}
               </div>
             </div>
           </div>
+          </section>
 
           <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="mb-4" data-testid="user-tabs">
+            <TabsList className="thin-scroll mb-4 flex w-full justify-start overflow-x-auto" data-testid="user-tabs">
               <TabsTrigger value="summary" data-testid="user-tab-summary">Summary</TabsTrigger>
               <TabsTrigger value="current" data-testid="user-tab-current">Current Status</TabsTrigger>
               <TabsTrigger value="history" data-testid="user-tab-history">Daily History</TabsTrigger>
@@ -137,7 +151,7 @@ export default function UserDetail() {
                   <thead>
                     <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                       <th className="px-4 py-2 font-medium">Reporting Date</th>
-                      <th className="px-4 py-2 font-medium">Rev</th>
+                      <th className="px-4 py-2 text-center font-medium">Rev</th>
                       <th className="px-4 py-2 font-medium">Tasking Status</th>
                       <th className="px-4 py-2 font-medium">Completion</th>
                     </tr>
@@ -146,7 +160,7 @@ export default function UserDetail() {
                     {data.history.map((h, i) => (
                       <tr key={i} className="border-b border-border/60">
                         <td className="px-4 py-2 font-mono">{h.reporting_date}</td>
-                        <td className="px-4 py-2 font-mono">{h.revision}</td>
+                        <td className="px-4 py-2 text-center font-mono">{h.revision}</td>
                         <td className="px-4 py-2">{h.person.tasking_status || "—"}</td>
                         <td className="px-4 py-2 text-muted-foreground">{h.person.completion_status || "—"}</td>
                       </tr>

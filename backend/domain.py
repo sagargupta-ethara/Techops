@@ -24,18 +24,18 @@ COLUMNS = [
     ("forge_phase", "FORGE phase", "trinity"),
     ("forge_run_count", "FORGE Run Count", "trinity"),
     ("edict_disposition", "EDICT.md disposition", "trinity"),
+    ("tasks_created_after_forge", "Number of Task Created (After Forge)", "trinity"),
     ("crucible_run_count", "CRUCIBLE Run Count", "trinity"),
     ("crucible_phase", "CRUCIBLE phase", "trinity"),
     ("verdict_disposition", "VERDICT.md disposition", "trinity"),
     ("completion_status", "Completion Status", "trinity"),
-    ("tasks_completed", "Number of Task Completed", "trinity"),
+    ("tasks_approved_after_crucible", "Number of Task Approved (After Crucible)", "trinity"),
     ("crucible_verdict", "Crucible Verdict", "trinity"),
     ("remarks", "Remarks", "trinity"),
     ("input_bundles_created", "Input Bundles Created", "manual"),
     ("input_bundles_approved", "No. of Input Bundles Approved", "manual"),
     ("trajectory_generated", "Trajectory Generated", "manual"),
     ("tasks_qced", "Number of Task Approved/ QCed", "manual"),
-    ("remark", "Remark", "manual"),
 ]
 
 FIELD_KEYS = [c[0] for c in COLUMNS]
@@ -54,7 +54,7 @@ CORE_FIELDS = [
 ]
 
 # Long free-text fields that should be truncated in lists.
-LONG_TEXT_FIELDS = {"remarks", "remark", "tracking_md"}
+LONG_TEXT_FIELDS = {"remarks", "tracking_md"}
 
 SCHEMA_HASH = hashlib.sha256("|".join(HEADER_LABELS).encode()).hexdigest()[:16]
 
@@ -215,9 +215,10 @@ def derive_progress(rec: dict) -> dict:
 
     assigned = to_int(rec.get("assigned_target"))
     qced = to_int(rec.get("tasks_qced"))
+    trinity_staged = to_int(rec.get("tasks_created_after_forge"))
+    trinity_completed = to_int(rec.get("tasks_approved_after_crucible"))
     remark_t = (rec.get("remarks") or "").strip()
-    remark_m = (rec.get("remark") or "").strip()
-    remark_text = remark_t or remark_m
+    remark_text = remark_t
     any_remark = bool(remark_text)
     flags = []
 
@@ -233,11 +234,7 @@ def derive_progress(rec: dict) -> dict:
     show_manual = any(w in ws for w in ("manual_dataset", "trajectory", "manual_qc")) or has_any(rec, MANUAL_FIELDS)
 
     def trinity_complete():
-        cs = (rec.get("completion_status") or "").lower()
-        vd = (rec.get("verdict_disposition") or "").lower()
-        cv = (rec.get("crucible_verdict") or "").lower()
-        return (any(k in cs for k in ("complete", "done", "100"))
-                or "approved" in vd or "approved" in cv or "sign-off" in vd or "signoff" in vd)
+        return bool(assigned and trinity_completed is not None and trinity_completed >= assigned)
 
     def manual_complete():
         return assigned is not None and assigned > 0 and qced is not None and qced >= assigned
@@ -268,11 +265,14 @@ def derive_progress(rec: dict) -> dict:
 
     parts = []
     if "trinity" in ws:
-        eng = rec.get("engram_phase") or "No data"
-        fo = rec.get("forge_phase") or "No data"
-        cr = rec.get("crucible_phase") or "No data"
-        parts.append(f"Trinity — ENGRAM {eng}, FORGE {fo}, CRUCIBLE {cr}"
-                     + (" (complete)" if trinity_complete() else ""))
+        target = assigned if assigned is not None else "No data"
+        staged = trinity_staged if trinity_staged is not None else 0
+        completed = trinity_completed if trinity_completed is not None else 0
+        parts.append(
+            f"Trinity — {staged}/{target} staged after Forge; "
+            f"{completed}/{target} approved after Crucible"
+            + (" (complete)" if trinity_complete() else " (in progress)")
+        )
     if measured:
         a = assigned if assigned is not None else "No data"
         c = qced if qced is not None else "No data"
@@ -292,6 +292,7 @@ def derive_progress(rec: dict) -> dict:
     return {
         "workstreams": ws or ["other"], "label": label, "absent": False, "completion": completion,
         "completion_state": state, "assigned": assigned, "completed": qced,
+        "trinity_staged": trinity_staged, "trinity_completed": trinity_completed,
         "show_trinity": show_trinity, "show_manual": show_manual, "flags": flags, "insight": insight,
     }
 
