@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import api from "@/lib/api";
+import { fmtDay } from "@/lib/format";
+import { datedPath } from "@/lib/podHistory";
 import { PageContainer, PageHeader } from "@/components/Page";
+import PodBackupHistory from "@/components/pod/PodBackupHistory";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -57,20 +61,31 @@ function cval(row, key) {
 export default function Pods() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("overall");
-  const { data, isLoading } = useQuery({
-    queryKey: ["summary"],
-    queryFn: () => api.get("/summary").then((r) => r.data),
+  const [selectedDate, setSelectedDate] = useState("");
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["summary", selectedDate || "live"],
+    queryFn: () => api.get(datedPath("/summary", selectedDate)).then((r) => r.data),
   });
 
   const pods = data?.pods || [];
-  const podUrl = (name) => `/pods/${encodeURIComponent(name)}`;
+  const podUrl = (name) => datedPath(`/pods/${encodeURIComponent(name)}`, selectedDate);
   const openPod = (name) => navigate(podUrl(name));
 
   return (
     <>
       <PageContainer>
         <PageHeader title="Pod-wise Summary"
-                    subtitle="Live roll-up of Trinity / Manual / Harness workstreams per POD. Click a row to drill into the POD overview." />
+                    subtitle={selectedDate ? `Historical roll-up for ${fmtDay(selectedDate)}. Click a row to drill into the same reporting day.` : "Live roll-up of Trinity / Manual / Harness workstreams per POD. Click a row to drill into the POD overview."}
+                    right={<PodBackupHistory selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
+
+        {selectedDate && (
+          <section className="mb-5 flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="pod-history-banner">
+            <div><strong className="text-sm">{isFetching ? "Loading historical data…" : `Viewing ${data?.source === "backup" ? "CSV backup" : "historical snapshot"}`}</strong><p className="mt-0.5 text-xs text-muted-foreground">Reporting day {fmtDay(selectedDate)} · all cards, tabs, and POD drill-downs use this date.</p></div>
+            <Button variant="outline" size="sm" className="h-11 gap-1.5 sm:h-9" onClick={() => setSelectedDate("")}>
+              <RotateCcw className="h-3.5 w-3.5" /> Return to live
+            </Button>
+          </section>
+        )}
 
         {isLoading || !data?.kpis ? (
           <Skeleton className="h-24 rounded-md" />

@@ -145,6 +145,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .animate-fade-in { animation: fadeIn 0.5s ease both; }
 .animate-scale-in { animation: scaleIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-drawer-in { animation: drawerIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.sheet-transition { animation-duration: 180ms !important; transition-duration: 180ms; }
 
 /* interactive card lift */
 .card-lift { transition: border-color 0.16s ease, background-color 0.16s ease; }
@@ -157,4 +158,5 @@ tbody tr { transition: background-color 0.12s ease; }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+    .sheet-transition { animation-duration: 0.001ms !important; }
 }

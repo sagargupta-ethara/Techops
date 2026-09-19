@@ -57,6 +57,44 @@ def test_backup_csv_can_power_a_historical_snapshot():
     assert snapshot["people"][0]["pod"] == "Historical Lead"
 
 
+def test_legacy_backup_csv_maps_completed_tasks_to_crucible_approvals():
+    # Given: backups created before the Trinity schema update used this exact header shape.
+    legacy_headers = [
+        "TPM", "Pod Lead", "Name", "Email", "Role", "Project Name", "Internal Name",
+        "Intern/FTE", "Date", "Tasking Status", "Assigned Target", "Tracking. MD",
+        "ENGRAM Run Count", "ENGRAM phase", "DIRECTIVE.md disposition", "FORGE phase",
+        "FORGE Run Count", "EDICT.md disposition", "CRUCIBLE Run Count", "CRUCIBLE phase",
+        "VERDICT.md disposition", "Completion Status", "Number of Task Completed",
+        "Crucible Verdict", "Remarks", "Input Bundles Created", "No. of Input Bundles Approved",
+        "Trajectory Generated", "Number of Task Approved/ QCed", "Remark",
+    ]
+    row = [""] * len(legacy_headers)
+    row[legacy_headers.index("Pod Lead")] = "Historical Lead"
+    row[legacy_headers.index("Name")] = "Historical Tasker"
+    row[legacy_headers.index("Email")] = "historical@example.com"
+    row[legacy_headers.index("Role")] = "Tasker"
+    row[legacy_headers.index("Date")] = "09-18-2026"
+    row[legacy_headers.index("Tasking Status")] = "Trinity"
+    row[legacy_headers.index("Number of Task Completed")] = "7"
+    values = [[""] * len(legacy_headers), legacy_headers, row]
+    stream = StringIO()
+    csv.writer(stream).writerows(values)
+
+    # When
+    snapshot = backup_doc_to_snapshot({
+        "backup_date": "2026-09-18",
+        "csv": stream.getvalue(),
+        "trigger": "manual",
+        "created_at": "2026-09-18T08:30:50+00:00",
+    })
+
+    # Then
+    assert snapshot is not None
+    assert snapshot["source"] == "backup"
+    assert snapshot["people"][0]["tasks_created_after_forge"] == ""
+    assert snapshot["people"][0]["tasks_approved_after_crucible"] == "7"
+
+
 def test_reporting_date_options_merge_snapshots_and_backups():
     # Given / When
     options = reporting_date_options(["2026-09-18", "2026-09-17"], ["2026-09-18", "2026-09-16"])

@@ -20,7 +20,7 @@ Dashboard filter panels place search on its own full-width row. Filter controls 
 
 Daily Progress uses the same filter anatomy, with date shortcuts always visible and disjoint date selection disclosed in-place. Upload actions use a focused modal, retain row-level validation feedback, and state whether existing logical records will be skipped or replaced. Data-lineage notes sit beside the workflow reconciliation strip so historical workbook, uploaded CSV, and live Delivery sources remain distinguishable.
 
-POD Analytics stays focused on the latest live data. Historical CSV backups run in the background and are managed outside the POD summary surface, so backup controls do not compete with the operational tables.
+POD Analytics defaults to the latest live data. A single `Backup history` action in the page header opens a right-side history drawer; its always-visible date range narrows available reporting days, and selecting a day refreshes every card and table from that historical snapshot. Historical mode is disclosed in-page and offers a one-click return to live data.
 
 ## 5. Shared primitives and states
 
@@ -32,6 +32,7 @@ POD Analytics stays focused on the latest live data. Historical CSV backups run 
 - `DistroChart`: fixed analytical viewport, accessible table toggle, shared tooltip and palette.
 - `.data-table`: sticky header, centered numeric/count columns, compact row height, clear hover/focus state. Long operational tables use a bounded vertical scroll owner so their column/status headers remain visible while rows scroll.
 - `Pagination`: bounded result context plus previous/next actions.
+- `PodBackupHistory`: header action plus responsive history drawer with date-range filters, explicit snapshot provenance, selectable reporting days, and reset-to-live state.
 - Empty/loading states occupy only the space needed to explain the state.
 
 Interactive states use a visible 2px teal focus ring. Hover increases contrast only on actionable controls. Selected navigation is indicated by background, text, and a left marker.

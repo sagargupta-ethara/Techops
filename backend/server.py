@@ -116,9 +116,28 @@ async def latest_snapshot():
     return await db.snapshots.find_one({}, sort=[("reporting_date", -1), ("revision", -1)])
 
 
+def normalize_backup_values(values: list[list[str]]) -> list[list[str]]:
+    if len(values) < 2:
+        return values
+    headers = [header.strip() for header in values[1]]
+    legacy_completed_header = "Number of Task Completed"
+    if legacy_completed_header not in headers or D.FIELD_LABEL["tasks_approved_after_crucible"] in headers:
+        return values
+    source_index = {header: index for index, header in enumerate(headers)}
+    normalized_rows = [[""] * len(D.COLUMNS), D.HEADER_LABELS]
+    for row in values[2:]:
+        normalized_row = []
+        for field_key, header, _group in D.COLUMNS:
+            source_header = legacy_completed_header if field_key == "tasks_approved_after_crucible" else header
+            index = source_index.get(source_header)
+            normalized_row.append(row[index] if index is not None and index < len(row) else "")
+        normalized_rows.append(normalized_row)
+    return normalized_rows
+
+
 def backup_doc_to_snapshot(doc: dict) -> dict | None:
     values = list(csv.reader(io.StringIO(doc.get("csv", ""))))
-    parsed = D.parse_rows(values)
+    parsed = D.parse_rows(normalize_backup_values(values))
     if not parsed["header_ok"] or not parsed["people"]:
         return None
     reporting_date = doc["backup_date"]
